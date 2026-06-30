@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Enterprise AI Agent Interface</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-tertiary-container": "#fffbff",
+                      "primary-container": "#2a6af9",
+                      "on-tertiary-fixed-variant": "#7b2e00",
+                      "surface-container": "#edeeef",
+                      "on-secondary-fixed": "#161c23",
+                      "surface-tint": "#0053db",
+                      "surface-variant": "#e1e3e4",
+                      "primary-fixed": "#dbe1ff",
+                      "on-tertiary-fixed": "#351000",
+                      "on-secondary": "#ffffff",
+                      "surface-dim": "#d9dadb",
+                      "tertiary": "#9e3e00",
+                      "secondary-fixed": "#dde3ed",
+                      "surface-container-high": "#e7e8e9",
+                      "outline": "#737687",
+                      "on-secondary-container": "#5d636c",
+                      "on-error": "#ffffff",
+                      "on-secondary-fixed-variant": "#414750",
+                      "on-primary": "#ffffff",
+                      "on-error-container": "#93000a",
+                      "on-primary-fixed-variant": "#003ea8",
+                      "primary-fixed-dim": "#b4c5ff",
+                      "inverse-on-surface": "#f0f1f2",
+                      "on-surface-variant": "#424655",
+                      "tertiary-fixed-dim": "#ffb695",
+                      "surface-container-low": "#f3f4f5",
+                      "on-background": "#191c1d",
+                      "outline-variant": "#c3c6d8",
+                      "surface-container-lowest": "#ffffff",
+                      "surface-bright": "#f8f9fa",
+                      "primary": "#0050d6",
+                      "secondary-container": "#dae0ea",
+                      "error": "#ba1a1a",
+                      "secondary-fixed-dim": "#c1c7d1",
+                      "on-primary-container": "#fefcff",
+                      "on-surface": "#191c1d",
+                      "on-primary-fixed": "#00174b",
+                      "on-tertiary": "#ffffff",
+                      "tertiary-container": "#c64f00",
+                      "surface-container-highest": "#e1e3e4",
+                      "surface": "#f8f9fa",
+                      "inverse-primary": "#b4c5ff",
+                      "tertiary-fixed": "#ffdbcc",
+                      "inverse-surface": "#2e3132",
+                      "secondary": "#595f68",
+                      "error-container": "#ffdad6",
+                      "background": "#f8f9fa"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "md": "16px",
+                      "lg": "24px",
+                      "margin": "24px",
+                      "sm": "12px",
+                      "xs": "8px",
+                      "base": "4px",
+                      "xl": "32px",
+                      "gutter": "16px"
+              },
+              "fontFamily": {
+                      "body-md": ["Inter"],
+                      "label-md": ["Inter"],
+                      "headline-sm": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "headline-lg": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "code-sm": ["JetBrains Mono"],
+                      "headline-md": ["Inter"]
+              },
+              "fontSize": {
+                      "body-md": ["14px", {"lineHeight": "22px", "fontWeight": "400"}],
+                      "label-md": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                      "headline-sm": ["16px", {"lineHeight": "24px", "fontWeight": "600"}],
+                      "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "headline-lg": ["28px", {"lineHeight": "36px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                      "body-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                      "code-sm": ["12px", {"lineHeight": "18px", "fontWeight": "400"}],
+                      "headline-md": ["20px", {"lineHeight": "28px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.filled {
+            font-variation-settings: 'FILL' 1;
+        }
+        
+        /* Custom scrollbar for sleek UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d9dadb;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c1c7d1;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface h-screen overflow-hidden flex font-body-md">
+<!-- JSON Component: SideNavBar (MANDATORY INJECTION) -->
+<nav class="w-[240px] h-screen fixed left-0 top-0 bg-surface-container-lowest border-r border-surface-variant flex flex-col h-full py-md px-xs z-50">
+<!-- Brand Header -->
+<div class="px-md pb-xl flex items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined filled text-[18px]" data-icon="smart_toy">smart_toy</span>
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-primary">Enterprise Workspace</h1>
+<p class="font-label-md text-label-md text-on-surface-variant">AI Operations</p>
+</div>
+</div>
+<!-- Navigation Links -->
+<div class="flex flex-col gap-xs flex-grow">
+<!-- Home -->
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-body-md text-body-md">Home</span>
+</a>
+<!-- Assets -->
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="database">database</span>
+<span class="font-body-md text-body-md">Assets</span>
+</a>
+<!-- Knowledge -->
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="book">book</span>
+<span class="font-body-md text-body-md">Knowledge</span>
+</a>
+<!-- Agents (ACTIVE STATE LOGIC) -->
+<a class="flex items-center gap-sm px-md py-sm rounded-lg bg-primary-container text-on-primary-container font-semibold" href="#">
+<span class="material-symbols-outlined filled" data-icon="smart_toy">smart_toy</span>
+<span class="font-body-md text-body-md">Agents</span>
+</a>
+<!-- Analytics -->
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="bar_chart">bar_chart</span>
+<span class="font-body-md text-body-md">Analytics</span>
+</a>
+<!-- Settings -->
+<a class="flex items-center gap-sm px-md py-sm rounded-lg text-on-surface-variant hover:bg-surface-container-high transition-colors mt-auto" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-body-md text-body-md">Settings</span>
+</a>
+</div>
+<!-- CTA -->
+<div class="pt-md mt-sm border-t border-surface-variant px-xs">
+<button class="w-full flex items-center justify-center gap-xs bg-primary text-on-primary rounded-lg py-sm font-label-md text-label-md hover:bg-surface-tint transition-colors">
+                + New Asset
+            </button>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="ml-[240px] flex-1 flex flex-col h-screen relative bg-surface">
+<!-- JSON Component: TopAppBar -->
+<header class="flex justify-between items-center h-[56px] px-lg sticky top-0 z-40 bg-surface bg-opacity-90 backdrop-blur-md border-b border-surface-variant">
+<div class="flex items-center gap-md">
+<!-- Search Bar -->
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-sm text-on-surface-variant text-[18px]" data-icon="search">search</span>
+<input class="h-8 pl-xl pr-sm bg-surface-container-low border border-surface-variant rounded-md font-body-sm text-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-[240px] transition-all" placeholder="Search KnowledgeCenter..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<button class="text-primary font-label-md text-label-md hover:text-surface-tint transition-colors">Invite</button>
+<div class="flex items-center gap-xs text-on-surface-variant">
+<button class="p-xs rounded-full hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined" data-icon="notifications">notifications</span></button>
+<button class="p-xs rounded-full hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined" data-icon="help">help</span></button>
+<button class="p-xs rounded-full hover:bg-surface-container-high transition-colors"><span class="material-symbols-outlined" data-icon="account_circle">account_circle</span></button>
+</div>
+</div>
+</header>
+<!-- Chat Container -->
+<div class="flex-1 overflow-y-auto px-lg py-xl pb-[120px] flex flex-col gap-xl w-full max-w-4xl mx-auto">
+<!-- Context Header (Observability Metadata) -->
+<div class="flex items-center justify-between border-b border-surface-variant pb-sm mb-sm">
+<div class="flex items-center gap-sm">
+<span class="flex items-center gap-xs bg-surface-container-high text-on-surface-variant px-sm py-base rounded-full font-code-sm text-code-sm">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Session ID: OP-924-A
+                    </span>
+<span class="font-label-md text-label-md text-outline">Model: GPT-4-Enterprise</span>
+</div>
+<div class="flex items-center gap-sm text-outline font-label-md text-label-md">
+<span>Latency: 1.2s</span>
+<span>•</span>
+<span>Tokens: 428</span>
+</div>
+</div>
+<!-- User Message -->
+<div class="flex justify-end w-full">
+<div class="max-w-[80%] bg-surface-container-low border border-surface-variant rounded-2xl rounded-tr-sm px-lg py-md shadow-sm">
+<p class="font-body-md text-body-md text-on-surface">Can you summarize the Q3 infrastructure compliance requirements and provide the specific sources you referenced? We need this for the upcoming audit.</p>
+</div>
+</div>
+<!-- Agent Response -->
+<div class="flex flex-col gap-sm w-full max-w-[85%]">
+<div class="flex items-center gap-sm">
+<div class="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container shrink-0">
+<span class="material-symbols-outlined filled text-[16px]" data-icon="smart_toy">smart_toy</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">Knowledge Agent</span>
+<span class="font-body-sm text-body-sm text-outline">10:42 AM</span>
+</div>
+<div class="ml-10 bg-surface-container-lowest border border-surface-variant rounded-2xl rounded-tl-sm shadow-sm overflow-hidden flex flex-col">
+<!-- Main Text Response -->
+<div class="px-lg py-md border-b border-surface-variant">
+<p class="font-body-md text-body-md text-on-surface mb-md">Based on the provided corporate policies, the Q3 infrastructure compliance audit focuses on three main pillars:</p>
+<ol class="list-decimal pl-md font-body-md text-body-md text-on-surface space-y-sm mb-md">
+<li><strong>Data Encryption in Transit:</strong> All internal APIs must mandate TLS 1.3 by end of September. Legacy systems relying on TLS 1.2 will be flagged as critical vulnerabilities.</li>
+<li><strong>Access Control Logging:</strong> System audit logs must be retained in immutability storage for a minimum of 365 days. Currently, the default retention for the EU cluster is 90 days.</li>
+<li><strong>Vulnerability Patch SLAs:</strong> Critical CVEs must be remediated within 72 hours of disclosure, an update from the previous 5-day window.</li>
+</ol>
+<p class="font-body-md text-body-md text-on-surface">Please note that the EU cluster requires immediate attention to meet the new retention policy.</p>
+</div>
+<!-- Accordion: Retrieval Trace -->
+<div class="bg-surface-bright" id="trace-accordion">
+<button class="w-full px-lg py-sm flex items-center justify-between hover:bg-surface-container-low transition-colors" onclick="document.getElementById('trace-content').classList.toggle('hidden'); document.getElementById('accordion-icon').classList.toggle('rotate-90')">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant transition-transform duration-200" data-icon="play_arrow" id="accordion-icon">play_arrow</span>
+<span class="font-label-md text-label-md text-on-surface">View Retrieval Trace &amp; 3 Sources</span>
+</div>
+<div class="flex items-center gap-xs">
+<span class="bg-surface-container-high px-2 py-0.5 rounded font-code-sm text-code-sm text-on-surface-variant">Avg. Confidence: 94%</span>
+</div>
+</button>
+<!-- Accordion Content -->
+<div class="hidden px-lg py-md border-t border-surface-variant flex flex-col gap-sm" id="trace-content">
+<!-- Source 1 -->
+<div class="flex items-start gap-md bg-surface-container-lowest p-sm border border-surface-variant rounded-md hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="mt-1 w-6 h-6 rounded bg-primary-fixed flex items-center justify-center text-on-primary-fixed">
+<span class="material-symbols-outlined text-[14px]" data-icon="description">description</span>
+</div>
+<div class="flex-1 flex flex-col gap-base">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface group-hover:text-primary transition-colors">Q3_Infra_Security_Policy_v2.pdf</span>
+<span class="font-code-sm text-code-sm text-emerald-600 bg-emerald-50 px-1 rounded">Score: 98%</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant line-clamp-1">"Section 4.1: TLS 1.3 is mandated across all active internal endpoints by Q3 close..."</span>
+<div class="flex gap-xs mt-1">
+<span class="font-code-sm text-code-sm text-outline border border-surface-variant rounded px-1">Chunk ID: c-982</span>
+</div>
+</div>
+</div>
+<!-- Source 2 -->
+<div class="flex items-start gap-md bg-surface-container-lowest p-sm border border-surface-variant rounded-md hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="mt-1 w-6 h-6 rounded bg-secondary-container flex items-center justify-center text-on-secondary-container">
+<span class="material-symbols-outlined text-[14px]" data-icon="confluence">article</span>
+</div>
+<div class="flex-1 flex flex-col gap-base">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface group-hover:text-primary transition-colors">Confluence: EU Cluster Retention SLA</span>
+<span class="font-code-sm text-code-sm text-emerald-600 bg-emerald-50 px-1 rounded">Score: 92%</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant line-clamp-1">"Update: 365-day immutable storage requirement applies globally..."</span>
+<div class="flex gap-xs mt-1">
+<span class="font-code-sm text-code-sm text-outline border border-surface-variant rounded px-1">Chunk ID: c-104</span>
+</div>
+</div>
+</div>
+<!-- Source 3 -->
+<div class="flex items-start gap-md bg-surface-container-lowest p-sm border border-surface-variant rounded-md hover:bg-surface-container-low transition-colors group cursor-pointer">
+<div class="mt-1 w-6 h-6 rounded bg-tertiary-container flex items-center justify-center text-on-tertiary-container">
+<span class="material-symbols-outlined text-[14px]" data-icon="bug_report">bug_report</span>
+</div>
+<div class="flex-1 flex flex-col gap-base">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md text-on-surface group-hover:text-primary transition-colors">Jira: SOC-2 Audit Prep Board</span>
+<span class="font-code-sm text-code-sm text-emerald-600 bg-emerald-50 px-1 rounded">Score: 88%</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant line-clamp-1">"Critical CVE SLA reduced from 5 days to 72 hours per new compliance directive."</span>
+<div class="flex gap-xs mt-1">
+<span class="font-code-sm text-code-sm text-outline border border-surface-variant rounded px-1">Chunk ID: c-442</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Action Buttons below bubble -->
+<div class="flex items-center gap-sm ml-10 mt-xs">
+<button class="flex items-center gap-xs px-xs py-base rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Copy">
+<span class="material-symbols-outlined text-[16px]" data-icon="content_copy">content_copy</span>
+</button>
+<button class="flex items-center gap-xs px-xs py-base rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Good Response">
+<span class="material-symbols-outlined text-[16px]" data-icon="thumb_up">thumb_up</span>
+</button>
+<button class="flex items-center gap-xs px-xs py-base rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Bad Response">
+<span class="material-symbols-outlined text-[16px]" data-icon="thumb_down">thumb_down</span>
+</button>
+<div class="w-[1px] h-4 bg-surface-variant mx-xs"></div>
+<button class="flex items-center gap-xs px-xs py-base rounded hover:bg-surface-container-high text-on-surface-variant transition-colors font-label-md text-label-md">
+<span class="material-symbols-outlined text-[16px]" data-icon="refresh">refresh</span> Regenerate
+                     </button>
+</div>
+</div>
+</div>
+<!-- Chat Input Area -->
+<div class="absolute bottom-0 left-0 right-0 bg-surface border-t border-surface-variant p-lg z-10">
+<div class="max-w-4xl mx-auto relative">
+<div class="bg-surface-container-lowest border border-surface-variant rounded-xl shadow-sm focus-within:border-primary focus-within:ring-1 focus-within:ring-primary transition-all flex flex-col p-sm">
+<textarea class="w-full bg-transparent border-none resize-none focus:ring-0 font-body-md text-body-md text-on-surface min-h-[60px] p-0" placeholder="Ask follow-up or query another document..."></textarea>
+<div class="flex justify-between items-center mt-sm border-t border-surface-variant pt-sm">
+<div class="flex items-center gap-sm">
+<button class="p-xs rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" title="Attach File">
+<span class="material-symbols-outlined text-[20px]" data-icon="attach_file">attach_file</span>
+</button>
+<button class="p-xs rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors" title="Mention">
+<span class="material-symbols-outlined text-[20px]" data-icon="alternate_email">alternate_email</span>
+</button>
+</div>
+<button class="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-on-primary hover:bg-surface-tint transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[20px]" data-icon="send">send</span>
+</button>
+</div>
+</div>
+<div class="text-center mt-xs">
+<span class="font-body-sm text-body-sm text-outline">AI-generated content may be inaccurate. Verify important information.</span>
+</div>
+</div>
+</div>
+</main>
+</body></html>
