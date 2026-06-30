@@ -1,110 +1,508 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { changePassword } from '@/api/auth'
+import { ElMessage } from 'element-plus'
+import {
+  Setting,
+  User,
+  Bell,
+  Lock,
+  Key,
+  ArrowLeft,
+  SwitchButton,
+  DocumentCopy,
+  Delete,
+  Plus
+} from '@element-plus/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const activeTab = ref('general')
+
 const tabs = [
-  { id: 'general', label: 'General', icon: '⚙️' },
-  { id: 'profile', label: 'Profile', icon: '👤' },
-  { id: 'notifications', label: 'Notifications', icon: '🔔' },
-  { id: 'security', label: 'Security', icon: '🔒' },
-  { id: 'api', label: 'API Keys', icon: '🔑' }
+  { id: 'general', label: '通用设置', icon: Setting },
+  { id: 'profile', label: '个人信息', icon: User },
+  { id: 'notifications', label: '通知设置', icon: Bell },
+  { id: 'security', label: '安全设置', icon: Lock },
+  { id: 'api', label: 'API 密钥', icon: Key }
 ]
+
+const currentUser = computed(() => authStore.currentUser)
+
+// 通用设置
+const settings = ref({
+  language: 'zh',
+  theme: 'light',
+  defaultModel: 'xiaomi-model'
+})
+
+// 通知设置
+const notifications = ref({
+  email: true,
+  browser: true
+})
+
+const handleLogout = () => {
+  authStore.logout()
+  ElMessage.success('已退出登录')
+  router.push('/login')
+}
+
+const handleSaveGeneral = () => {
+  ElMessage.success('设置已保存')
+}
+
+// 修改密码
+const showPasswordDialog = ref(false)
+const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
+const passwordLoading = ref(false)
+
+const handleChangePassword = () => {
+  passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
+  showPasswordDialog.value = true
+}
+
+const handleSubmitPassword = async () => {
+  if (!passwordForm.value.oldPassword || !passwordForm.value.newPassword) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    ElMessage.error('两次输入的密码不一致')
+    return
+  }
+  if (passwordForm.value.newPassword.length < 6) {
+    ElMessage.error('新密码长度不能少于6位')
+    return
+  }
+  passwordLoading.value = true
+  try {
+    await changePassword({
+      oldPassword: passwordForm.value.oldPassword,
+      newPassword: passwordForm.value.newPassword
+    })
+    ElMessage.success('密码修改成功')
+    showPasswordDialog.value = false
+  } catch (error) {
+    ElMessage.error('密码修改失败')
+  } finally {
+    passwordLoading.value = false
+  }
+}
+
+const handleCopyKey = (key: string) => {
+  navigator.clipboard.writeText(key)
+  ElMessage.success('已复制到剪贴板')
+}
 </script>
 
 <template>
   <div class="settings-page">
-    <div class="settings-header">
-      <button class="back-btn" @click="router.back()">← Back</button>
-      <h1>Settings</h1>
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <el-button class="back-btn" @click="router.back()">
+        <el-icon><ArrowLeft /></el-icon>
+        <span>返回</span>
+      </el-button>
+      <h1>设置</h1>
     </div>
+
     <div class="settings-layout">
+      <!-- 侧边栏导航 -->
       <div class="settings-sidebar">
-        <nav class="tabs-nav">
-          <button v-for="tab in tabs" :key="tab.id" class="tab-btn" :class="{ active: activeTab === tab.id }" @click="activeTab = tab.id">
-            <span>{{ tab.icon }}</span><span>{{ tab.label }}</span>
-          </button>
-        </nav>
-        <div class="sidebar-footer"><button class="logout-btn" @click="authStore.logout(); router.push('/')">🚪 Logout</button></div>
+        <el-menu
+          :default-active="activeTab"
+          class="settings-menu"
+        >
+          <el-menu-item
+            v-for="tab in tabs"
+            :key="tab.id"
+            :index="tab.id"
+            @click="activeTab = tab.id"
+          >
+            <el-icon><component :is="tab.icon" /></el-icon>
+            <span>{{ tab.label }}</span>
+          </el-menu-item>
+        </el-menu>
+
+        <div class="sidebar-footer">
+          <el-button type="danger" plain class="logout-btn" @click="handleLogout">
+            <el-icon><SwitchButton /></el-icon>
+            <span>退出登录</span>
+          </el-button>
+        </div>
       </div>
+
+      <!-- 内容区域 -->
       <div class="settings-content">
-        <div v-if="activeTab === 'general'" class="settings-section">
-          <h2>General Settings</h2><p class="section-desc">Manage your workspace preferences</p>
-          <div class="setting-item"><div class="setting-info"><div class="setting-label">Language</div><div class="setting-desc">Select your preferred language</div></div><select class="setting-select"><option>English</option><option>中文</option></select></div>
-          <div class="setting-item"><div class="setting-info"><div class="setting-label">Theme</div><div class="setting-desc">Choose your preferred theme</div></div><select class="setting-select"><option>Light</option><option>Dark</option><option>System</option></select></div>
-          <div class="setting-item"><div class="setting-info"><div class="setting-label">Default Model</div><div class="setting-desc">Select the default AI model</div></div><select class="setting-select"><option>GPT-4-Enterprise</option><option>Claude-3-Enterprise</option></select></div>
-        </div>
-        <div v-if="activeTab === 'profile'" class="settings-section">
-          <h2>Profile</h2><p class="section-desc">Manage your personal information</p>
-          <div class="profile-form">
-            <div class="form-group"><label>Name</label><input type="text" :value="authStore.currentUser?.name" readonly /></div>
-            <div class="form-group"><label>Email</label><input type="email" :value="authStore.currentUser?.email" readonly /></div>
-            <div class="form-group"><label>Role</label><input type="text" :value="authStore.currentUser?.role" readonly /></div>
+        <!-- 通用设置 -->
+        <el-card v-if="activeTab === 'general'" class="settings-card" shadow="never">
+          <template #header>
+            <h2>通用设置</h2>
+            <p class="section-desc">管理您的工作区偏好设置</p>
+          </template>
+          <el-form label-width="120px" class="settings-form">
+            <el-form-item label="语言">
+              <el-select v-model="settings.language" style="width: 200px">
+                <el-option label="中文" value="zh" />
+                <el-option label="English" value="en" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="主题">
+              <el-radio-group v-model="settings.theme">
+                <el-radio value="light">浅色</el-radio>
+                <el-radio value="dark">深色</el-radio>
+                <el-radio value="system">跟随系统</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="默认模型">
+              <el-select v-model="settings.defaultModel" style="width: 200px">
+                <el-option label="小米模型" value="xiaomi-model" />
+                <el-option label="GPT-4" value="gpt-4" />
+                <el-option label="Claude-3" value="claude-3" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="handleSaveGeneral">保存设置</el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <!-- 个人信息 -->
+        <el-card v-if="activeTab === 'profile'" class="settings-card" shadow="never">
+          <template #header>
+            <h2>个人信息</h2>
+            <p class="section-desc">管理您的个人资料</p>
+          </template>
+          <el-form label-width="120px" class="settings-form">
+            <el-form-item label="用户名">
+              <el-input :value="currentUser?.username" disabled />
+            </el-form-item>
+            <el-form-item label="姓名">
+              <el-input :value="currentUser?.name" disabled />
+            </el-form-item>
+            <el-form-item label="邮箱">
+              <el-input :value="currentUser?.email" disabled />
+            </el-form-item>
+            <el-form-item label="角色">
+              <el-tag>{{ currentUser?.role || 'user' }}</el-tag>
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <!-- 通知设置 -->
+        <el-card v-if="activeTab === 'notifications'" class="settings-card" shadow="never">
+          <template #header>
+            <h2>通知设置</h2>
+            <p class="section-desc">配置您的通知偏好</p>
+          </template>
+          <div class="notification-settings">
+            <div class="notification-item">
+              <div class="notification-info">
+                <h3>邮件通知</h3>
+                <p>接收邮件通知提醒</p>
+              </div>
+              <el-switch v-model="notifications.email" />
+            </div>
+            <div class="notification-item">
+              <div class="notification-info">
+                <h3>浏览器通知</h3>
+                <p>接收浏览器推送通知</p>
+              </div>
+              <el-switch v-model="notifications.browser" />
+            </div>
           </div>
-        </div>
-        <div v-if="activeTab === 'notifications'" class="settings-section">
-          <h2>Notifications</h2><p class="section-desc">Configure notification preferences</p>
-          <div class="setting-item"><div class="setting-info"><div class="setting-label">Email Notifications</div><div class="setting-desc">Receive email notifications</div></div><label class="toggle"><input type="checkbox" checked /><span class="toggle-slider"></span></label></div>
-          <div class="setting-item"><div class="setting-info"><div class="setting-label">Browser Notifications</div><div class="setting-desc">Receive browser push notifications</div></div><label class="toggle"><input type="checkbox" checked /><span class="toggle-slider"></span></label></div>
-        </div>
-        <div v-if="activeTab === 'security'" class="settings-section">
-          <h2>Security</h2><p class="section-desc">Manage your security settings</p>
-          <div class="setting-item"><div class="setting-info"><div class="setting-label">Two-Factor Authentication</div><div class="setting-desc">Add extra security to your account</div></div><button class="btn btn-secondary">Enable</button></div>
-          <div class="setting-item"><div class="setting-info"><div class="setting-label">Change Password</div><div class="setting-desc">Update your account password</div></div><button class="btn btn-secondary">Change</button></div>
-        </div>
-        <div v-if="activeTab === 'api'" class="settings-section">
-          <h2>API Keys</h2><p class="section-desc">Manage your API keys</p>
+        </el-card>
+
+        <!-- 安全设置 -->
+        <el-card v-if="activeTab === 'security'" class="settings-card" shadow="never">
+          <template #header>
+            <h2>安全设置</h2>
+            <p class="section-desc">管理您的账户安全</p>
+          </template>
+          <div class="security-settings">
+            <div class="security-item">
+              <div class="security-info">
+                <h3>双重认证</h3>
+                <p>为您的账户添加额外安全保障</p>
+              </div>
+              <el-button type="primary" plain>启用</el-button>
+            </div>
+            <div class="security-item">
+              <div class="security-info">
+                <h3>修改密码</h3>
+                <p>更新您的账户密码</p>
+              </div>
+              <el-button type="primary" plain @click="handleChangePassword">修改</el-button>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- API 密钥 -->
+        <el-card v-if="activeTab === 'api'" class="settings-card" shadow="never">
+          <template #header>
+            <div class="card-header">
+              <div>
+                <h2>API 密钥</h2>
+                <p class="section-desc">管理您的 API 访问密钥</p>
+              </div>
+              <el-button type="primary">
+                <el-icon><Plus /></el-icon>
+                <span>生成新密钥</span>
+              </el-button>
+            </div>
+          </template>
           <div class="api-keys-list">
-            <div class="api-key-item"><div><div class="api-key-name">Production Key</div><div class="api-key-value">sk-••••••••••••••••••••••••</div></div><div class="api-key-actions"><button class="btn-icon">📋</button><button class="btn-icon">🗑️</button></div></div>
-            <div class="api-key-item"><div><div class="api-key-name">Development Key</div><div class="api-key-value">sk-dev-••••••••••••••••••••</div></div><div class="api-key-actions"><button class="btn-icon">📋</button><button class="btn-icon">🗑️</button></div></div>
+            <div class="api-key-item">
+              <div class="api-key-info">
+                <h3>生产环境密钥</h3>
+                <p class="api-key-value">sk-••••••••••••••••••••••••</p>
+              </div>
+              <div class="api-key-actions">
+                <el-button type="primary" link @click="handleCopyKey('sk-prod-key')">
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+                <el-button type="danger" link>
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
+            </div>
+            <div class="api-key-item">
+              <div class="api-key-info">
+                <h3>开发环境密钥</h3>
+                <p class="api-key-value">sk-dev-••••••••••••••••••••</p>
+              </div>
+              <div class="api-key-actions">
+                <el-button type="primary" link @click="handleCopyKey('sk-dev-key')">
+                  <el-icon><DocumentCopy /></el-icon>
+                </el-button>
+                <el-button type="danger" link>
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </div>
+            </div>
           </div>
-          <button class="btn btn-primary">+ Generate New Key</button>
-        </div>
+        </el-card>
       </div>
     </div>
+
+    <!-- 修改密码对话框 -->
+    <el-dialog v-model="showPasswordDialog" title="修改密码" width="400px">
+      <el-form label-width="80px">
+        <el-form-item label="旧密码">
+          <el-input v-model="passwordForm.oldPassword" type="password" show-password placeholder="请输入旧密码" />
+        </el-form-item>
+        <el-form-item label="新密码">
+          <el-input v-model="passwordForm.newPassword" type="password" show-password placeholder="请输入新密码（至少6位）" />
+        </el-form-item>
+        <el-form-item label="确认密码">
+          <el-input v-model="passwordForm.confirmPassword" type="password" show-password placeholder="请再次输入新密码" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showPasswordDialog = false">取消</el-button>
+        <el-button type="primary" :loading="passwordLoading" @click="handleSubmitPassword">确认修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.settings-page { max-width: 1000px; margin: 0 auto; padding: 24px; }
-.settings-header { display: flex; align-items: center; gap: 16px; margin-bottom: 32px; }
-.back-btn { padding: 8px 12px; background: transparent; border: 1px solid var(--border-color); border-radius: var(--radius-md); font-size: 14px; color: var(--text-secondary); }
-.back-btn:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
-.settings-header h1 { font-size: 28px; font-weight: 700; }
-.settings-layout { display: flex; gap: 24px; }
-.settings-sidebar { width: 200px; flex-shrink: 0; }
-.tabs-nav { display: flex; flex-direction: column; gap: 4px; padding: 8px; background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); }
-.tab-btn { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: transparent; border: none; border-radius: var(--radius-md); font-size: 14px; color: var(--text-secondary); text-align: left; cursor: pointer; }
-.tab-btn:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
-.tab-btn.active { background-color: var(--color-primary); color: white; }
-.sidebar-footer { margin-top: 16px; padding: 8px; background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); }
-.logout-btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px; background: transparent; border: none; border-radius: var(--radius-md); font-size: 14px; color: #dc2626; }
-.logout-btn:hover { background-color: #fee2e2; }
-.settings-content { flex: 1; min-width: 0; }
-.settings-section { padding: 24px; background-color: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); }
-.settings-section h2 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
-.section-desc { font-size: 14px; color: var(--text-secondary); margin-bottom: 24px; }
-.setting-item { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border-color); }
-.setting-item:last-child { border-bottom: none; }
-.setting-label { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
-.setting-desc { font-size: 13px; color: var(--text-secondary); }
-.setting-select { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); font-size: 14px; min-width: 150px; }
-.profile-form { display: flex; flex-direction: column; gap: 20px; }
-.form-group { display: flex; flex-direction: column; gap: 8px; }
-.form-group label { font-size: 14px; font-weight: 500; }
-.form-group input { padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); font-size: 14px; background-color: var(--bg-tertiary); }
-.toggle { position: relative; display: inline-block; width: 48px; height: 24px; cursor: pointer; }
-.toggle input { opacity: 0; width: 0; height: 0; }
-.toggle-slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border-color); border-radius: var(--radius-full); transition: background-color 0.2s; }
-.toggle-slider::before { content: ''; position: absolute; width: 20px; height: 20px; left: 2px; bottom: 2px; background-color: white; border-radius: 50%; transition: transform 0.2s; }
-.toggle input:checked + .toggle-slider { background-color: var(--color-primary); }
-.toggle input:checked + .toggle-slider::before { transform: translateX(24px); }
-.api-keys-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
-.api-key-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background-color: var(--bg-tertiary); border-radius: var(--radius-md); }
-.api-key-name { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
-.api-key-value { font-size: 13px; font-family: var(--font-mono); color: var(--text-secondary); }
-.api-key-actions { display: flex; gap: 4px; }
+.settings-page {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.back-btn {
+  border: 1px solid var(--border-color);
+  background: transparent;
+}
+
+.back-btn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.settings-layout {
+  display: flex;
+  gap: 24px;
+}
+
+.settings-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.settings-menu {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color-light);
+  overflow: hidden;
+}
+
+.settings-menu :deep(.el-menu-item) {
+  height: 44px;
+  line-height: 44px;
+}
+
+.sidebar-footer {
+  margin-top: 16px;
+}
+
+.logout-btn {
+  width: 100%;
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-card {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color-light);
+}
+
+.settings-card :deep(.el-card__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color-light);
+}
+
+.settings-card :deep(.el-card__body) {
+  padding: 24px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.settings-card h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 4px 0;
+}
+
+.section-desc {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.settings-form {
+  max-width: 500px;
+}
+
+/* 通知设置 */
+.notification-settings {
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-color-light);
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-info h3 {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin: 0 0 4px 0;
+}
+
+.notification-info p {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+/* 安全设置 */
+.security-settings {
+  display: flex;
+  flex-direction: column;
+}
+
+.security-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border-color-light);
+}
+
+.security-item:last-child {
+  border-bottom: none;
+}
+
+.security-info h3 {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin: 0 0 4px 0;
+}
+
+.security-info p {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+/* API 密钥 */
+.api-keys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.api-key-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.api-key-info h3 {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  margin: 0 0 4px 0;
+}
+
+.api-key-value {
+  font-size: 13px;
+  font-family: var(--font-family-mono);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.api-key-actions {
+  display: flex;
+  gap: 4px;
+}
 </style>

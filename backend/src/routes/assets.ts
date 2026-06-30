@@ -1,162 +1,328 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
-import type { Asset } from '../types/index.js'
+import jwt from 'jsonwebtoken'
+import multer from 'multer'
+import path from 'path'
+import fs from 'fs'
+import { query, queryOne, execute } from '../config/database.js'
+import { documentProcessor } from '../services/documentProcessor.js'
+import { vectorStoreService } from '../services/vectorStore.js'
+import { successResponse, errorResponse, paginatedResponse, camelizeKeys } from '../utils/transform.js'
 
 const router = Router()
 
-// Mock 资产数据
-const mockAssets: Asset[] = [
-  {
-    id: 'asset-001',
-    name: 'Corporate Security Policy',
-    type: 'document',
-    status: 'active',
-    description: 'Enterprise security policy document v2.3',
-    size: 2048576,
-    userId: 'user-001',
-    createdAt: new Date('2024-06-01T10:00:00Z'),
-    updatedAt: new Date('2024-06-15T14:30:00Z')
+const JWT_SECRET = process.env.JWT_SECRET || 'enterprise-workspace-secret-key'
+
+// 配置文件上传
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/')
   },
-  {
-    id: 'asset-002',
-    name: 'Q3 Compliance Guidelines',
-    type: 'document',
-    status: 'active',
-    description: 'Quarterly compliance requirements and guidelines',
-    size: 1536000,
-    userId: 'user-001',
-    createdAt: new Date('2024-06-10T09:00:00Z'),
-    updatedAt: new Date('2024-06-20T11:45:00Z')
-  },
-  {
-    id: 'asset-003',
-    name: 'Customer Database',
-    type: 'dataset',
-    status: 'active',
-    description: 'Production customer data snapshot',
-    size: 104857600,
-    userId: 'user-001',
-    createdAt: new Date('2024-05-15T08:00:00Z'),
-    updatedAt: new Date('2024-06-28T16:00:00Z')
-  },
-  {
-    id: 'asset-004',
-    name: 'GPT-4 Enterprise',
-    type: 'model',
-    status: 'active',
-    description: 'Enterprise-grade GPT-4 model deployment',
-    userId: 'user-001',
-    createdAt: new Date('2024-04-01T12:00:00Z'),
-    updatedAt: new Date('2024-06-25T10:00:00Z')
-  },
-  {
-    id: 'asset-005',
-    name: 'Knowledge Agent',
-    type: 'agent',
-    status: 'active',
-    description: 'RAG-based knowledge retrieval agent',
-    userId: 'user-001',
-    createdAt: new Date('2024-06-01T10:00:00Z'),
-    updatedAt: new Date('2024-06-29T09:00:00Z')
+  filename: (req, file, cb) => {
+    const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`
+    cb(null, uniqueName)
   }
-]
+})
+
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB
+  }
+})
+
+// 获取当前用户ID的辅助函数
+function getCurrentUserId(req: Request): string | null {
+  const authHeader = req.headers.authorization
+  const token = authHeader?.replace('Bearer ', '')
+  if (!token) return null
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string }
+    return decoded.userId
+  } catch {
+    return null
+  }
+}
 
 // GET /api/assets
-router.get('/', (req, res) => {
-  const { page = 1, pageSize = 10, type, status, search } = req.query
-  const pageNum = Number(page)
-  const size = Number(pageSize)
-
-  let filtered = [...mockAssets]
-
-  if (type) {
-    filtered = filtered.filter(a => a.type === type)
-  }
-  if (status) {
-    filtered = filtered.filter(a => a.status === status)
-  }
-  if (search) {
-    const searchStr = String(search).toLowerCase()
-    filtered = filtered.filter(a =>
-      a.name.toLowerCase().includes(searchStr) ||
-      a.description?.toLowerCase().includes(searchStr)
-    )
-  }
-
-  const start = (pageNum - 1) * size
-  const end = start + size
-  const items = filtered.slice(start, end)
-  const total = filtered.length
-
-  res.json({
-    items,
-    pagination: {
-      page: pageNum,
-      pageSize: size,
-      total,
-      totalPages: Math.ceil(total / size)
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req)
+    if (!userId) {
+      res.status(401).json(errorResponse('未授权'))
+      return
     }
-  })
+
+    const { page = 1, pageSize = 10, type, status, search } = req.query
+    const pageNum = parseInt(page as string) || 1
+    const size = parseInt(pageSize as string) || 10
+    const offset = (pageNum - 1) * size
+
+    let sql = 'SELECT id, user_id, name, type, status, description, file_path, file_size, mime_type, created_at, updated_at FROM assets WHERE user_id = ?'
+    const params: any[] = [userId]
+
+    if (type) {
+      sql += ' AND type = ?'
+      params.push(type)
+    }
+
+    if (status) {
+      sql += ' AND status = ?'
+      params.push(status)
+    }
+
+    if (search) {
+      sql += ' AND (name LIKE ? OR description LIKE ?)'
+      params.push(`%${search}%`, `%${search}%`)
+    }
+
+    sql += ` ORDER BY updated_at DESC LIMIT ${size} OFFSET ${offset}`
+
+    const assets = await query(sql, params)
+
+    // 获取总数
+    let countSql = 'SELECT COUNT(*) as total FROM assets WHERE user_id = ?'
+    const countParams: any[] = [userId]
+    if (type) {
+      countSql += ' AND type = ?'
+      countParams.push(type)
+    }
+    if (status) {
+      countSql += ' AND status = ?'
+      countParams.push(status)
+    }
+    if (search) {
+      countSql += ' AND (name LIKE ? OR description LIKE ?)'
+      countParams.push(`%${search}%`, `%${search}%`)
+    }
+    const countResult = await queryOne(countSql, countParams)
+    const total = countResult?.total || 0
+
+    res.json(paginatedResponse(assets, total, pageNum, size))
+  } catch (error) {
+    console.error('Get assets error:', error)
+    res.status(500).json(errorResponse('服务器内部错误'))
+  }
 })
 
 // GET /api/assets/:id
-router.get('/:id', (req, res) => {
-  const asset = mockAssets.find(a => a.id === req.params.id)
-  if (!asset) {
-    res.status(404).json({ success: false, error: 'Asset not found' })
-    return
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req)
+    if (!userId) {
+      res.status(401).json(errorResponse('未授权'))
+      return
+    }
+
+    const asset = await queryOne(
+      'SELECT id, user_id, name, type, status, description, file_path, file_size, mime_type, metadata, created_at, updated_at FROM assets WHERE id = ? AND user_id = ?',
+      [req.params.id, userId]
+    )
+
+    if (!asset) {
+      res.status(404).json(errorResponse('资产不存在'))
+      return
+    }
+
+    res.json(successResponse(asset))
+  } catch (error) {
+    console.error('Get asset error:', error)
+    res.status(500).json({ success: false, error: '服务器内部错误' })
   }
-  res.json({ success: true, data: asset })
 })
 
 // POST /api/assets
-router.post('/', (req, res) => {
-  const { name, type, description } = req.body
+router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req)
+    if (!userId) {
+      res.status(401).json(errorResponse('未授权'))
+      return
+    }
 
-  const newAsset: Asset = {
-    id: `asset-${uuidv4().slice(0, 8)}`,
-    name,
-    type,
-    description,
-    status: 'active',
-    userId: 'user-001',
-    createdAt: new Date(),
-    updatedAt: new Date()
+    const { name, type, description, knowledge_base_id } = req.body
+
+    if (!name || !type) {
+      res.status(400).json(errorResponse('名称和类型不能为空'))
+      return
+    }
+
+    // 验证类型
+    const validTypes = ['document', 'dataset', 'model', 'agent']
+    if (!validTypes.includes(type)) {
+      res.status(400).json(errorResponse('无效的资产类型'))
+      return
+    }
+
+    const assetId = uuidv4()
+    let filePath = null
+    let fileSize = null
+    let mimeType = null
+    let chunkCount = 0
+
+    // 如果有文件上传
+    if (req.file) {
+      filePath = req.file.path
+      fileSize = req.file.size
+      mimeType = req.file.mimetype
+
+      // 如果是文档类型，进行文档处理
+      if (type === 'document') {
+        try {
+          // 1. 解析文档
+          const chunks = await documentProcessor.processFile(req.file.path, req.file.mimetype)
+          chunkCount = chunks.length
+
+          // 2. 如果指定了知识库，创建文档记录并保存切片
+          if (knowledge_base_id && chunks.length > 0) {
+            const documentId = uuidv4()
+
+            // 创建文档记录
+            await execute(
+              'INSERT INTO documents (id, knowledge_base_id, user_id, name, file_path, file_size, mime_type, status, chunk_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              [documentId, knowledge_base_id, userId, name, req.file.path, req.file.size, req.file.mimetype, 'active', chunkCount]
+            )
+
+            // 保存分块到数据库
+            for (const chunk of chunks) {
+              const chunkId = uuidv4()
+              const tokens = documentProcessor.estimateTokens(chunk.content)
+              await execute(
+                'INSERT INTO document_chunks (id, document_id, content, chunk_index, tokens, metadata) VALUES (?, ?, ?, ?, ?, ?)',
+                [chunkId, documentId, chunk.content, chunk.metadata.chunk_index, tokens, JSON.stringify(chunk.metadata)]
+              )
+            }
+
+            // 向量化并存储到 ChromaDB
+            try {
+              await vectorStoreService.addDocument(
+                documentId,
+                chunks.map(c => c.content),
+                chunks.map(c => ({
+                  ...c.metadata,
+                  document_id: documentId,
+                  knowledge_base_id
+                }))
+              )
+            } catch (error) {
+              console.error('Vector store error:', error)
+            }
+
+            // 更新知识库文档数量
+            await execute(
+              'UPDATE knowledge_bases SET document_count = document_count + 1 WHERE id = ?',
+              [knowledge_base_id]
+            )
+          }
+        } catch (error) {
+          console.error('Document processing error:', error)
+          // 文档处理失败不影响资产创建
+        }
+      }
+    }
+
+    await execute(
+      'INSERT INTO assets (id, user_id, name, type, status, description, file_path, file_size, mime_type, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [assetId, userId, name, type, 'active', description || null, filePath, fileSize, mimeType, chunkCount > 0 ? JSON.stringify({ chunkCount, knowledge_base_id }) : null]
+    )
+
+    const newAsset = await queryOne(
+      'SELECT id, user_id, name, type, status, description, file_path, file_size, mime_type, metadata, created_at, updated_at FROM assets WHERE id = ?',
+      [assetId]
+    )
+
+    res.status(201).json(successResponse({ ...newAsset, chunkCount }))
+  } catch (error) {
+    console.error('Create asset error:', error)
+    res.status(500).json(errorResponse('服务器内部错误'))
   }
-
-  mockAssets.unshift(newAsset)
-
-  res.status(201).json({ success: true, data: newAsset })
 })
 
-// PATCH /api/assets/:id
-router.patch('/:id', (req, res) => {
-  const asset = mockAssets.find(a => a.id === req.params.id)
-  if (!asset) {
-    res.status(404).json({ success: false, error: 'Asset not found' })
-    return
+// PUT /api/assets/:id
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req)
+    if (!userId) {
+      res.status(401).json(errorResponse('未授权'))
+      return
+    }
+
+    const { name, description, status } = req.body
+
+    // 检查资产是否存在
+    const existingAsset = await queryOne(
+      'SELECT id FROM assets WHERE id = ? AND user_id = ?',
+      [req.params.id, userId]
+    )
+
+    if (!existingAsset) {
+      res.status(404).json(errorResponse('资产不存在'))
+      return
+    }
+
+    // 构建更新语句
+    const updates: string[] = []
+    const params: any[] = []
+
+    if (name !== undefined) {
+      updates.push('name = ?')
+      params.push(name)
+    }
+    if (description !== undefined) {
+      updates.push('description = ?')
+      params.push(description)
+    }
+    if (status !== undefined) {
+      updates.push('status = ?')
+      params.push(status)
+    }
+
+    if (updates.length > 0) {
+      params.push(req.params.id)
+      await execute(
+        `UPDATE assets SET ${updates.join(', ')} WHERE id = ?`,
+        params
+      )
+    }
+
+    const updatedAsset = await queryOne(
+      'SELECT id, user_id, name, type, status, description, file_path, file_size, mime_type, created_at, updated_at FROM assets WHERE id = ?',
+      [req.params.id]
+    )
+
+    res.json(successResponse(updatedAsset))
+  } catch (error) {
+    console.error('Update asset error:', error)
+    res.status(500).json(errorResponse('服务器内部错误'))
   }
-
-  const { name, description, status } = req.body
-  if (name) asset.name = name
-  if (description) asset.description = description
-  if (status) asset.status = status
-  asset.updatedAt = new Date()
-
-  res.json({ success: true, data: asset })
 })
 
 // DELETE /api/assets/:id
-router.delete('/:id', (req, res) => {
-  const index = mockAssets.findIndex(a => a.id === req.params.id)
-  if (index === -1) {
-    res.status(404).json({ success: false, error: 'Asset not found' })
-    return
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req)
+    if (!userId) {
+      res.status(401).json(errorResponse('未授权'))
+      return
+    }
+
+    const existingAsset = await queryOne(
+      'SELECT id FROM assets WHERE id = ? AND user_id = ?',
+      [req.params.id, userId]
+    )
+
+    if (!existingAsset) {
+      res.status(404).json(errorResponse('资产不存在'))
+      return
+    }
+
+    await execute('DELETE FROM assets WHERE id = ?', [req.params.id])
+    res.json(successResponse(null))
+  } catch (error) {
+    console.error('Delete asset error:', error)
+    res.status(500).json(errorResponse('服务器内部错误'))
   }
-
-  mockAssets.splice(index, 1)
-
-  res.json({ success: true, data: null })
 })
 
 export default router

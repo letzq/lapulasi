@@ -1,0 +1,167 @@
+/*
+ * Element Plus 飞书风格覆盖
+ * 白色侧边栏 + 淡雅清新
+ */
+
+/* ========== 按钮 ========== */
+.el-button {
+  border-radius: var(--radius-md) !important;
+  font-weight: var(--font-weight-medium) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.el-button--primary {
+  background-color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+
+  &:hover,
+  &:focus {
+    background-color: var(--color-primary-hover) !important;
+    border-color: var(--color-primary-hover) !important;
+  }
+
+  &:active {
+    background-color: var(--color-primary-active) !important;
+    border-color: var(--color-primary-active) !important;
+  }
+}
+
+/* 次级按钮：白底蓝边 */
+.el-button--default {
+  &:hover,
+  &:focus {
+    color: var(--color-primary) !important;
+    border-color: var(--color-primary) !important;
+    background-color: var(--color-primary-light) !important;
+  }
+}
+
+/* 文字按钮 */
+.el-button--primary.is-link {
+  background: transparent !important;
+  border: none !important;
+  padding: 4px 8px !important;
+}
+
+/* ========== 输入框 ========== */
+.el-input__wrapper {
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 0 0 1px var(--border-color) inset !important;
+  transition: all var(--transition-fast) !important;
+
+  &:hover {
+    box-shadow: 0 0 0 1px var(--color-primary) inset !important;
+  }
+
+  &.is-focus {
+    box-shadow: 0 0 0 1px var(--color-primary) inset !important;
+  }
+}
+
+/* ========== 卡片 ========== */
+.el-card {
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--border-color-light) !important;
+  box-shadow: var(--shadow-card) !important;
+  transition: all var(--transition-normal) !important;
+
+  &:hover {
+    box-shadow: var(--shadow-sm) !important;
+  }
+}
+
+/* ========== 表格 ========== */
+.el-table {
+  border-radius: var(--radius-lg) !important;
+  overflow: hidden;
+
+  th.el-table__cell {
+    background-color: var(--bg-secondary) !important;
+    color: var(--color-text-regular) !important;
+    font-weight: var(--font-weight-medium) !important;
+    font-size: var(--font-size-sm) !important;
+  }
+
+  td.el-table__cell {
+    color: var(--color-text-primary) !important;
+    font-size: var(--font-size-md) !important;
+  }
+}
+
+/* ========== 标签 ========== */
+.el-tag {
+  border-radius: var(--radius-round) !important;
+  font-weight: var(--font-weight-medium) !important;
+}
+
+/* ========== 对话框 ========== */
+.el-dialog {
+  border-radius: var(--radius-xl) !important;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  padding: var(--spacing-xl) !important;
+  border-bottom: 1px solid var(--border-color-light);
+  margin-right: 0 !important;
+}
+
+.el-dialog__body {
+  padding: var(--spacing-xl) !important;
+}
+
+.el-dialog__footer {
+  padding: var(--spacing-lg) var(--spacing-xl) !important;
+  border-top: 1px solid var(--border-color-light);
+}
+
+/* ========== 消息提示 ========== */
+.el-message {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* ========== 下拉菜单 ========== */
+.el-dropdown-menu {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--border-color-light) !important;
+}
+
+/* ========== 菜单（白色侧边栏适配） ========== */
+.el-menu {
+  border-right: none !important;
+  background-color: transparent !important;
+}
+
+/* ========== 滚动条 ========== */
+.el-scrollbar__bar {
+  &.is-vertical {
+    width: 6px !important;
+  }
+
+  &.is-horizontal {
+    height: 6px !important;
+  }
+
+  .el-scrollbar__thumb {
+    background-color: var(--color-text-placeholder) !important;
+    border-radius: var(--radius-round) !important;
+
+    &:hover {
+      background-color: var(--color-text-secondary) !important;
+    }
+  }
+}
+
+/* ========== 加载 ========== */
+.el-loading-spinner .circular {
+  width: 24px !important;
+  height: 24px !important;
+}
+
+/* ========== 空状态 ========== */
+.el-empty__description p {
+  color: var(--color-text-secondary) !important;
+  font-size: var(--font-size-md) !important;
+}

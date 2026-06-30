@@ -7,23 +7,40 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "init-db": "tsx src/scripts/init-db.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@chroma-core/default-embed": "^0.1.9",
+    "@langchain/community": "^1.1.28",
+    "@langchain/core": "^1.2.1",
+    "@langchain/openai": "^1.5.3",
+    "bcryptjs": "^3.0.3",
+    "chromadb": "^3.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "langchain": "^1.5.2",
+    "mammoth": "^1.12.0",
     "morgan": "^1.10.0",
-    "uuid": "^10.0.0"
+    "multer": "^2.2.0",
+    "mysql2": "^3.22.5",
+    "pdf-parse": "^2.4.5",
+    "uuid": "^10.0.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.9",
+    "@types/multer": "^2.1.0",
     "@types/node": "^22.5.0",
     "@types/uuid": "^10.0.0",
     "tsx": "^4.19.0",
