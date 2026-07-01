@@ -14,6 +14,7 @@ import { testConnection } from './config/database.js'
 import { testChromaConnection } from './config/ai.js'
 
 import { snakifyKeys } from './utils/transform.js'
+import { requestLogger } from './middleware/logger.js'
 
 import authRoutes from './routes/auth.js'
 import sessionsRoutes from './routes/sessions.js'
@@ -44,6 +45,7 @@ app.use(cors({
   credentials: true
 }))
 app.use(morgan('dev'))
+app.use(requestLogger)
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 

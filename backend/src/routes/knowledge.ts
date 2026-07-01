@@ -13,6 +13,23 @@ const router = Router()
 
 const JWT_SECRET = process.env.JWT_SECRET || 'enterprise-workspace-secret-key'
 
+/**
+ * 修复 multer 中文文件名编码问题
+ * Windows 环境下 originalname 可能是 latin1 编码的 UTF-8
+ */
+function fixFilename(originalname: string): string {
+  try {
+    // 尝试 latin1 → utf8 转换
+    const decoded = Buffer.from(originalname, 'latin1').toString('utf8')
+    // 如果转换后包含有效的中文字符，使用转换结果
+    if (/[一-鿿]/.test(decoded)) return decoded
+    // 否则尝试直接使用原名（可能已经是正确的）
+    return originalname
+  } catch {
+    return originalname
+  }
+}
+
 // 文件上传配置
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -23,7 +40,8 @@ const storage = multer.diskStorage({
     cb(null, uploadDir)
   },
   filename: (_req, file, cb) => {
-    cb(null, `${uuidv4()}${path.extname(file.originalname)}`)
+    const ext = path.extname(file.originalname)
+    cb(null, `${uuidv4()}${ext}`)
   }
 })
 
@@ -274,9 +292,10 @@ router.post('/:id/documents', upload.single('file'), async (req: Request, res: R
 
     // 1. 保存文档信息
     const documentId = uuidv4()
+    const fixedName = fixFilename(file.originalname)
     await execute(
       'INSERT INTO documents (id, knowledge_base_id, user_id, name, file_path, file_size, mime_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [documentId, req.params.id, userId, file.originalname, file.path, file.size, file.mimetype, 'processing']
+      [documentId, req.params.id, userId, fixedName, file.path, file.size, file.mimetype, 'processing']
     )
 
     // 2. 解析文档
@@ -325,6 +344,113 @@ router.post('/:id/documents', upload.single('file'), async (req: Request, res: R
   } catch (error: any) {
     console.error('Upload document error:', error)
     res.status(500).json(errorResponse(error.message || '服务器内部错误'))
+  }
+})
+
+// POST /api/knowledge/:id/documents/upload — 带进度反馈的上传（SSE）
+router.post('/:id/documents/upload', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const userId = getCurrentUserId(req)
+    if (!userId) {
+      res.status(401).json(errorResponse('未授权'))
+      return
+    }
+
+    const kb = await queryOne(
+      'SELECT id FROM knowledge_bases WHERE id = ? AND user_id = ?',
+      [req.params.id, userId]
+    )
+
+    if (!kb) {
+      res.status(404).json(errorResponse('知识库不存在'))
+      return
+    }
+
+    const file = req.file
+    if (!file) {
+      res.status(400).json(errorResponse('没有上传文件'))
+      return
+    }
+
+    // 设置 SSE 头
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders()
+
+    const sendProgress = (step: string, progress: number, detail?: string) => {
+      res.write(`data: ${JSON.stringify({ step, progress, detail })}\n\n`)
+    }
+
+    try {
+      // 步骤 1: 保存文档信息
+      sendProgress('saving', 10, '保存文档信息...')
+      const documentId = uuidv4()
+      const fixedName = fixFilename(file.originalname)
+      await execute(
+        'INSERT INTO documents (id, knowledge_base_id, user_id, name, file_path, file_size, mime_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [documentId, req.params.id, userId, fixedName, file.path, file.size, file.mimetype, 'processing']
+      )
+
+      // 步骤 2: 解析文档
+      sendProgress('parsing', 30, '解析文档内容...')
+      const chunks = await documentProcessor.processFile(file.path, file.mimetype)
+      sendProgress('parsing', 50, `解析完成: ${chunks.length} 个片段`)
+
+      // 步骤 3: 保存切片
+      sendProgress('chunking', 60, '保存切片到数据库...')
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i]
+        const chunkId = uuidv4()
+        const tokens = documentProcessor.estimateTokens(chunk.content)
+        await execute(
+          'INSERT INTO document_chunks (id, document_id, content, chunk_index, tokens, metadata) VALUES (?, ?, ?, ?, ?, ?)',
+          [chunkId, documentId, chunk.content, chunk.metadata.chunk_index, tokens, JSON.stringify(chunk.metadata)]
+        )
+        if ((i + 1) % 10 === 0 || i === chunks.length - 1) {
+          const pct = 60 + Math.round(((i + 1) / chunks.length) * 20)
+          sendProgress('chunking', pct, `已保存 ${i + 1}/${chunks.length} 个片段`)
+        }
+      }
+
+      // 步骤 4: 向量化
+      sendProgress('vectorizing', 85, '向量化中...')
+      try {
+        await vectorStoreService.addDocument(
+          documentId,
+          chunks.map(c => c.content),
+          chunks.map(c => ({ ...c.metadata, document_id: documentId, knowledge_base_id: req.params.id }))
+        )
+      } catch (e: any) {
+        console.error('[Knowledge] Vector store error:', e.message)
+      }
+
+      // 步骤 5: 更新状态
+      const totalTokens = chunks.reduce((sum, c) => sum + documentProcessor.estimateTokens(c.content), 0)
+      await execute(
+        'UPDATE documents SET status = ?, chunk_count = ?, total_tokens = ? WHERE id = ?',
+        ['active', chunks.length, totalTokens, documentId]
+      )
+      await execute(
+        'UPDATE knowledge_bases SET document_count = document_count + 1, total_tokens = total_tokens + ? WHERE id = ?',
+        [totalTokens, req.params.id]
+      )
+
+      // 完成
+      sendProgress('done', 100, `处理完成: ${chunks.length} 个片段`)
+      res.write(`data: ${JSON.stringify({ step: 'complete', documentId, chunkCount: chunks.length })}\n\n`)
+      res.end()
+
+    } catch (e: any) {
+      sendProgress('error', 0, e.message)
+      res.end()
+    }
+
+  } catch (error: any) {
+    console.error('Upload document error:', error)
+    if (!res.headersSent) {
+      res.status(500).json(errorResponse(error.message || '服务器内部错误'))
+    }
   }
 })
 

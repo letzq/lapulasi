@@ -1,29 +1,21 @@
 /**
  * 向量存储服务
- * 封装 ChromaDB 操作
+ * 封装 ChromaDB 操作，使用 Ollama 真实 embedding
  */
 
 import { chromaClient, COLLECTION_NAME } from '../config/ai.js'
+import { embeddingService } from './embeddingService.js'
 
 export class VectorStoreService {
   /**
-   * 获取或创建集合
+   * 获取或创建集合（使用真实 embedding）
    */
   async getCollection() {
-    // 使用空的嵌入函数，避免连接 HuggingFace
     return await chromaClient.getOrCreateCollection({
       name: COLLECTION_NAME,
       embeddingFunction: {
         generate: async (texts: string[]) => {
-          // 返回随机向量（用于测试）
-          return texts.map(() => {
-            const embedding: number[] = []
-            for (let i = 0; i < 1536; i++) {
-              embedding.push(Math.random() * 2 - 1)
-            }
-            const norm = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0))
-            return embedding.map(val => val / norm)
-          })
+          return await embeddingService.getEmbeddings(texts)
         }
       }
     })
@@ -37,19 +29,32 @@ export class VectorStoreService {
     chunks: string[],
     metadata: Record<string, any>[]
   ): Promise<void> {
-    const collection = await this.getCollection()
+    if (chunks.length === 0) return
 
+    const collection = await this.getCollection()
     const ids = chunks.map((_, i) => `${documentId}_chunk_${i}`)
     const metadatas = metadata.map(m => ({
       ...m,
       document_id: documentId
     }))
 
-    await collection.add({
-      ids,
-      documents: chunks,
-      metadatas
-    })
+    // 分批处理，每批 50 个 chunk
+    const batchSize = 50
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batchChunks = chunks.slice(i, i + batchSize)
+      const batchIds = ids.slice(i, i + batchSize)
+      const batchMetadatas = metadatas.slice(i, i + batchSize)
+
+      await collection.add({
+        ids: batchIds,
+        documents: batchChunks,
+        metadatas: batchMetadatas
+      })
+
+      console.log(`[VectorStore] 添加批次 ${Math.floor(i / batchSize) + 1}: ${batchChunks.length} 个 chunks`)
+    }
+
+    console.log(`[VectorStore] 文档 ${documentId} 共添加 ${chunks.length} 个 chunks`)
   }
 
   /**
@@ -82,15 +87,13 @@ export class VectorStoreService {
   async deleteDocument(documentId: string): Promise<void> {
     const collection = await this.getCollection()
 
-    // 获取该文档的所有分块
     const results = await collection.get({
       where: { document_id: documentId }
     })
 
     if (results.ids.length > 0) {
-      await collection.delete({
-        ids: results.ids
-      })
+      await collection.delete({ ids: results.ids })
+      console.log(`[VectorStore] 删除文档 ${documentId} 的 ${results.ids.length} 个 chunks`)
     }
   }
 

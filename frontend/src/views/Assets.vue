@@ -26,6 +26,12 @@ const editLoading = ref(false)
 const showDetailDialog = ref(false)
 const detailAsset = ref<Asset | null>(null)
 
+// 上传进度
+const showProgressDialog = ref(false)
+const uploadProgress = ref(0)
+const uploadStep = ref('')
+const uploadDetail = ref('')
+
 onMounted(async () => {
   await Promise.all([loadAssets(), loadKnowledgeBases()])
 })
@@ -140,19 +146,79 @@ const handleFileChange = (file: any) => {
 
 const handleSubmitUpload = async () => {
   if (!uploadForm.value.name) { ElMessage.warning('请输入资产名称'); return }
+  if (!selectedFile.value) { ElMessage.warning('请选择文件'); return }
+
+  // 关闭上传对话框，打开进度对话框
+  showUploadDialog.value = false
+  showProgressDialog.value = true
+  uploadProgress.value = 0
+  uploadStep.value = 'uploading'
+  uploadDetail.value = '上传文件中...'
+
   try {
-    const result = await createAsset({
-      name: uploadForm.value.name, type: uploadForm.value.type,
-      description: uploadForm.value.description || undefined,
-      file: selectedFile.value || undefined,
-      knowledgeBaseId: uploadForm.value.knowledge_base_id || undefined
+    const formData = new FormData()
+    formData.append('file', selectedFile.value)
+    formData.append('name', uploadForm.value.name)
+    formData.append('type', uploadForm.value.type)
+    if (uploadForm.value.description) formData.append('description', uploadForm.value.description)
+    if (uploadForm.value.knowledge_base_id) formData.append('knowledge_base_id', uploadForm.value.knowledge_base_id)
+
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+    const authStore = await import('@/stores/auth').then(m => m.useAuthStore())
+
+    const response = await fetch(`${baseURL}/assets/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authStore.token}` },
+      body: formData
     })
-    if (result.chunkCount && result.chunkCount > 0) {
-      ElMessage.success(`已上传并切分为 ${result.chunkCount} 个片段`)
-    } else { ElMessage.success('上传成功') }
-    showUploadDialog.value = false
-    await loadAssets()
-  } catch (e) { ElMessage.error('上传失败') }
+
+    if (!response.ok) {
+      throw new Error(`上传失败: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('无法读取响应')
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.step === 'complete') {
+              uploadProgress.value = 100
+              uploadStep.value = 'done'
+              uploadDetail.value = `处理完成: ${data.chunkCount} 个片段`
+              ElMessage.success(`上传成功，${data.chunkCount} 个片段`)
+              await loadAssets()
+              return
+            } else if (data.step === 'error') {
+              throw new Error(data.detail || '处理失败')
+            } else {
+              uploadProgress.value = data.progress || 0
+              uploadStep.value = data.step || ''
+              uploadDetail.value = data.detail || ''
+            }
+          } catch (e: any) {
+            if (e.message && !e.message.includes('JSON')) throw e
+          }
+        }
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '上传失败')
+  } finally {
+    setTimeout(() => { showProgressDialog.value = false }, 1500)
+  }
 }
 
 const filterOptions = [
@@ -350,6 +416,23 @@ const filterOptions = [
             <span class="detail-label">更新时间</span>
             <span class="detail-value">{{ formatDate(detailAsset.updatedAt) }}</span>
           </div>
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 上传进度对话框 -->
+    <el-dialog v-model="showProgressDialog" title="处理中" width="400px" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="uploadStep === 'done' || uploadStep === 'error'">
+      <div class="progress-content">
+        <el-progress :percentage="uploadProgress" :stroke-width="8" :status="uploadStep === 'error' ? 'exception' : uploadStep === 'done' ? 'success' : undefined" />
+        <div class="progress-info">
+          <div class="progress-steps">
+            <span :class="{ active: uploadStep === 'uploading' || uploadStep === 'saving' }">上传</span>
+            <span :class="{ active: uploadStep === 'parsing' }">解析</span>
+            <span :class="{ active: uploadStep === 'chunking' }">切片</span>
+            <span :class="{ active: uploadStep === 'vectorizing' }">向量化</span>
+            <span :class="{ active: uploadStep === 'done' }">完成</span>
+          </div>
+          <p class="progress-detail">{{ uploadDetail }}</p>
         </div>
       </div>
     </el-dialog>
@@ -613,5 +696,38 @@ const filterOptions = [
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* 进度对话框 */
+.progress-content {
+  padding: 8px 0;
+}
+
+.progress-info {
+  margin-top: 20px;
+}
+
+.progress-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.progress-steps span {
+  font-size: 12px;
+  color: #c9cdd4;
+  transition: color 0.2s;
+}
+
+.progress-steps span.active {
+  color: #3370ff;
+  font-weight: 500;
+}
+
+.progress-detail {
+  font-size: 13px;
+  color: #646a73;
+  text-align: center;
+  margin: 0;
 }
 </style>

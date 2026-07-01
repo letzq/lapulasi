@@ -5,6 +5,7 @@
 
 import { vectorStoreService } from './vectorStore.js'
 import { memoryService } from './memoryService.js'
+import { ragLogger } from '../middleware/logger.js'
 import dotenv from 'dotenv'
 
 dotenv.config()
@@ -55,7 +56,16 @@ export class RAGChain {
     topK = 5
   ): Promise<RAGResult> {
     // 1. 向量检索
-    const searchResults = await vectorStoreService.search(question, topK)
+    ragLogger.searchStart(question, topK)
+    let searchResults: any = { ids: [[]], documents: [[]], metadatas: [[]], distances: [[]] }
+    try {
+      searchResults = await vectorStoreService.search(question, topK)
+      const resultCount = searchResults.ids?.[0]?.length || 0
+      const topRelevance = searchResults.distances?.[0]?.[0] !== undefined ? Math.max(0, 1 / (1 + searchResults.distances[0][0])) : 0
+      ragLogger.searchResult(resultCount, topRelevance)
+    } catch (error: any) {
+      ragLogger.searchError(error)
+    }
 
     // 2. 构建上下文
     const context = searchResults.documents?.[0]?.join('\n\n') || '没有找到相关文档'
@@ -72,9 +82,9 @@ export class RAGChain {
       document_id: meta.document_id || 'unknown',
       document_name: meta.source || '未知文档',
       chunk_content: (searchResults.documents?.[0]?.[i] || '').substring(0, 200),
-      relevance: searchResults.distances?.[0]?.[i]
-        ? Math.max(0, 1 - searchResults.distances[0][i])
-        : 0.8
+      relevance: searchResults.distances?.[0]?.[i] !== undefined
+        ? Math.max(0, 1 / (1 + searchResults.distances[0][i]))
+        : 0.5
     }))
 
     // 5. 构建提示词
@@ -84,7 +94,10 @@ export class RAGChain {
       .replace('{question}', question)
 
     // 6. 调用 LLM
+    const llmStart = Date.now()
+    ragLogger.llmStart(process.env.LLM_MODEL || 'mimo-v2.5')
     const answer = await this.callLLM(prompt)
+    ragLogger.llmDone(Date.now() - llmStart, answer.length)
 
     // 7. 计算置信度
     const confidence = sources.length > 0
@@ -103,11 +116,15 @@ export class RAGChain {
     topK = 5
   ): AsyncGenerator<{ type: 'chunk' | 'sources' | 'done', content?: string, sources?: RAGSource[], confidence?: number }, void, unknown> {
     // 1. 向量检索（如果 ChromaDB 不可用，使用空结果）
+    ragLogger.searchStart(question, topK)
     let searchResults: any = { ids: [[]], documents: [[]], metadatas: [[]], distances: [[]] }
     try {
       searchResults = await vectorStoreService.search(question, topK)
-    } catch (error) {
-      console.warn('Vector search failed, using empty results:', error)
+      const resultCount = searchResults.ids?.[0]?.length || 0
+      const topRelevance = searchResults.distances?.[0]?.[0] !== undefined ? Math.max(0, 1 / (1 + searchResults.distances[0][0])) : 0
+      ragLogger.searchResult(resultCount, topRelevance)
+    } catch (error: any) {
+      ragLogger.searchError(error)
     }
 
     // 2. 构建上下文
@@ -125,9 +142,9 @@ export class RAGChain {
       document_id: meta.document_id || 'unknown',
       document_name: meta.source || '未知文档',
       chunk_content: (searchResults.documents?.[0]?.[i] || '').substring(0, 200),
-      relevance: searchResults.distances?.[0]?.[i]
-        ? Math.max(0, 1 - searchResults.distances[0][i])
-        : 0.8
+      relevance: searchResults.distances?.[0]?.[i] !== undefined
+        ? Math.max(0, 1 / (1 + searchResults.distances[0][i]))
+        : 0.5
     }))
 
     // 5. 发送来源信息

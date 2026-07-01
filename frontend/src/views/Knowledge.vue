@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Collection, Plus, Document, Upload, Delete, Search, FolderOpened } from '@element-plus/icons-vue'
-import { getKnowledgeBases, createKnowledgeBase, deleteKnowledgeBase, getKnowledgeBaseDocuments, uploadToKnowledgeBase, type KnowledgeBase, type Document as KBDocument } from '@/api/knowledge'
+import { getKnowledgeBases, createKnowledgeBase, deleteKnowledgeBase, getKnowledgeBaseDocuments, uploadToKnowledgeBase, deleteKnowledgeBaseDocument, type KnowledgeBase, type Document as KBDocument } from '@/api/knowledge'
 
 const loading = ref(false)
 const knowledgeBases = ref<KnowledgeBase[]>([])
@@ -15,6 +15,7 @@ const showDocsDialog = ref(false)
 const docsLoading = ref(false)
 const docsList = ref<KBDocument[]>([])
 const docsKBName = ref('')
+const docsKBId = ref('')
 
 // 上传文档
 const showUploadDialog = ref(false)
@@ -22,6 +23,12 @@ const uploadKBId = ref('')
 const uploadKBName = ref('')
 const uploadFile = ref<File | null>(null)
 const uploadLoading = ref(false)
+
+// 上传进度
+const showProgressDialog = ref(false)
+const uploadProgress = ref(0)
+const uploadStep = ref('')
+const uploadDetail = ref('')
 
 onMounted(() => loadKnowledgeBases())
 
@@ -71,6 +78,7 @@ const formatDate = (d: string) => {
 // 查看文档
 const handleViewDocs = async (kb: KnowledgeBase) => {
   docsKBName.value = kb.name
+  docsKBId.value = kb.id
   showDocsDialog.value = true
   docsLoading.value = true
   try {
@@ -78,6 +86,19 @@ const handleViewDocs = async (kb: KnowledgeBase) => {
     docsList.value = Array.isArray(result) ? result : (result as any).data || []
   } catch (e) { console.error(e); docsList.value = [] }
   finally { docsLoading.value = false }
+}
+
+// 删除文档
+const handleDeleteDoc = async (doc: KBDocument) => {
+  try {
+    await ElMessageBox.confirm(`确定删除文档「${doc.name}」？`, '删除确认', {
+      confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning'
+    })
+    await deleteKnowledgeBaseDocument(doc.id)
+    ElMessage.success('已删除')
+    docsList.value = docsList.value.filter(d => d.id !== doc.id)
+    await loadKnowledgeBases()
+  } catch (e) { if (e !== 'cancel') ElMessage.error('删除失败') }
 }
 
 // 打开上传
@@ -88,17 +109,77 @@ const handleUpload = (kb: KnowledgeBase) => {
   showUploadDialog.value = true
 }
 
-// 提交上传
+// 提交上传（SSE 带进度）
 const handleUploadSubmit = async () => {
   if (!uploadFile.value) { ElMessage.warning('请选择文件'); return }
-  uploadLoading.value = true
+
+  showUploadDialog.value = false
+  showProgressDialog.value = true
+  uploadProgress.value = 0
+  uploadStep.value = 'uploading'
+  uploadDetail.value = '上传文件中...'
+
   try {
-    const result = await uploadToKnowledgeBase(uploadKBId.value, uploadFile.value)
-    ElMessage.success(`上传成功${result.chunkCount ? `，已切分为 ${result.chunkCount} 个片段` : ''}`)
-    showUploadDialog.value = false
-    await loadKnowledgeBases()
-  } catch (e) { ElMessage.error('上传失败') }
-  finally { uploadLoading.value = false }
+    const formData = new FormData()
+    formData.append('file', uploadFile.value)
+
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+    const authStore = await import('@/stores/auth').then(m => m.useAuthStore())
+
+    const response = await fetch(`${baseURL}/knowledge/${uploadKBId.value}/documents/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authStore.token}` },
+      body: formData
+    })
+
+    if (!response.ok) {
+      throw new Error(`上传失败: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error('无法读取响应')
+
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.step === 'complete') {
+              uploadProgress.value = 100
+              uploadStep.value = 'done'
+              uploadDetail.value = `处理完成: ${data.chunkCount || 0} 个片段`
+              ElMessage.success(`上传成功，${data.chunkCount || 0} 个片段`)
+              await loadKnowledgeBases()
+              return
+            } else if (data.step === 'error') {
+              throw new Error(data.detail || '处理失败')
+            } else {
+              uploadProgress.value = data.progress || 0
+              uploadStep.value = data.step || ''
+              uploadDetail.value = data.detail || ''
+            }
+          } catch (e: any) {
+            if (e.message && !e.message.includes('JSON')) throw e
+          }
+        }
+      }
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '上传失败')
+    uploadStep.value = 'error'
+  } finally {
+    setTimeout(() => { showProgressDialog.value = false }, 1500)
+  }
 }
 
 const formatFileSize = (bytes?: number) => {
@@ -218,7 +299,7 @@ const statusConfig: Record<string, { label: string; dot: string }> = {
 
     <!-- 文档列表对话框 -->
     <el-dialog v-model="showDocsDialog" :title="`${docsKBName} — 文档列表`" width="560px">
-      <div v-loading="docsLoading">
+      <div v-loading="docsLoading" class="docs-container">
         <div class="docs-list" v-if="docsList.length > 0">
           <div v-for="doc in docsList" :key="doc.id" class="doc-item">
             <div class="doc-icon">
@@ -228,7 +309,12 @@ const statusConfig: Record<string, { label: string; dot: string }> = {
               <span class="doc-name">{{ doc.name }}</span>
               <span class="doc-meta">{{ doc.chunkCount }} 个片段 · {{ formatFileSize(doc.fileSize) }} · {{ formatDate(doc.createdAt) }}</span>
             </div>
-            <span class="doc-status" :class="doc.status">{{ doc.status === 'active' ? '正常' : doc.status === 'processing' ? '处理中' : '异常' }}</span>
+            <div class="doc-right">
+              <span class="doc-status" :class="doc.status">{{ doc.status === 'active' ? '正常' : doc.status === 'processing' ? '处理中' : '异常' }}</span>
+              <button class="doc-delete-btn" title="删除" @click="handleDeleteDoc(doc)">
+                <el-icon :size="14"><Delete /></el-icon>
+              </button>
+            </div>
           </div>
         </div>
         <div class="docs-empty" v-else-if="!docsLoading">
@@ -261,6 +347,23 @@ const statusConfig: Record<string, { label: string; dot: string }> = {
         <el-button @click="showUploadDialog = false">取消</el-button>
         <el-button type="primary" :loading="uploadLoading" @click="handleUploadSubmit">确定上传</el-button>
       </template>
+    </el-dialog>
+
+    <!-- 上传进度对话框 -->
+    <el-dialog v-model="showProgressDialog" title="处理中" width="400px" :close-on-click-modal="false" :close-on-press-escape="false" :show-close="uploadStep === 'done' || uploadStep === 'error'">
+      <div class="progress-content">
+        <el-progress :percentage="uploadProgress" :stroke-width="8" :status="uploadStep === 'error' ? 'exception' : uploadStep === 'done' ? 'success' : undefined" />
+        <div class="progress-info">
+          <div class="progress-steps">
+            <span :class="{ active: uploadStep === 'uploading' || uploadStep === 'saving' }">上传</span>
+            <span :class="{ active: uploadStep === 'parsing' }">解析</span>
+            <span :class="{ active: uploadStep === 'chunking' }">切片</span>
+            <span :class="{ active: uploadStep === 'vectorizing' }">向量化</span>
+            <span :class="{ active: uploadStep === 'done' }">完成</span>
+          </div>
+          <p class="progress-detail">{{ uploadDetail }}</p>
+        </div>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -450,6 +553,11 @@ const statusConfig: Record<string, { label: string; dot: string }> = {
 .empty-desc { font-size: 13px; color: #8f959e; margin: 0 0 24px; }
 
 /* 文档列表 */
+.docs-container {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
 .docs-list {
   display: flex;
   flex-direction: column;
@@ -510,6 +618,32 @@ const statusConfig: Record<string, { label: string; dot: string }> = {
   flex-shrink: 0;
 }
 
+.doc-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.doc-delete-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #8f959e;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+}
+
+.doc-delete-btn:hover {
+  background: #fff0f0;
+  color: #f53f3f;
+}
+
 .doc-status.active { background: #e6f9ec; color: #34c759; }
 .doc-status.processing { background: #fff4e6; color: #ff9500; }
 .doc-status.error { background: #fff0f0; color: #f53f3f; }
@@ -536,5 +670,38 @@ const statusConfig: Record<string, { label: string; dot: string }> = {
   border-radius: 8px;
   font-size: 13px;
   color: #1f2329;
+}
+
+/* 进度对话框 */
+.progress-content {
+  padding: 8px 0;
+}
+
+.progress-info {
+  margin-top: 20px;
+}
+
+.progress-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.progress-steps span {
+  font-size: 12px;
+  color: #c9cdd4;
+  transition: color 0.2s;
+}
+
+.progress-steps span.active {
+  color: #3370ff;
+  font-weight: 500;
+}
+
+.progress-detail {
+  font-size: 13px;
+  color: #646a73;
+  text-align: center;
+  margin: 0;
 }
 </style>

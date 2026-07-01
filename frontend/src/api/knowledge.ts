@@ -55,3 +55,8 @@ export function uploadToKnowledgeBase(id: string, file: File) {
     { headers: { 'Content-Type': 'multipart/form-data' } }
   )
 }
+
+// 删除知识库文档
+export function deleteKnowledgeBaseDocument(docId: string) {
+  return request.delete<any, null>(`/rag/documents/${docId}`)
+}

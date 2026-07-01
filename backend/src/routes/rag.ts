@@ -16,6 +16,7 @@ import { memoryService } from '../services/memoryService.js'
 import { statsService } from '../services/statsService.js'
 import { execute, query, queryOne } from '../config/database.js'
 import { successResponse, errorResponse, camelizeKeys } from '../utils/transform.js'
+import { ragLogger } from '../middleware/logger.js'
 
 const router = Router()
 
@@ -240,6 +241,7 @@ router.post('/chat', async (req: Request, res: Response) => {
         [uuidv4(), aiMessageId, source.document_id, source.document_name, source.chunk_content, source.relevance]
       )
     }
+    ragLogger.sourcesSaved(aiMessageId, sources.length)
 
     // 7. 更新会话统计
     await execute(

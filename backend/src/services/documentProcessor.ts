@@ -19,10 +19,10 @@ export class DocumentProcessor {
    * 处理文件，返回分块
    */
   async processFile(filePath: string, mimeType: string): Promise<ProcessedChunk[]> {
+    const fileName = path.basename(filePath)
     let text = ''
 
     try {
-      // 根据文件类型处理
       switch (mimeType) {
         case 'application/pdf':
           text = await this.processPDF(filePath)
@@ -40,48 +40,64 @@ export class DocumentProcessor {
           break
         default:
           // 尝试作为文本文件读取
-          text = fs.readFileSync(filePath, 'utf-8')
+          try {
+            text = fs.readFileSync(filePath, 'utf-8')
+          } catch {
+            text = ''
+          }
       }
-    } catch (error) {
-      console.error(`Error processing file ${filePath}:`, error)
-      // 如果解析失败，返回文件名作为内容
-      text = `文件: ${path.basename(filePath)}\n类型: ${mimeType}\n无法解析此文件内容`
+    } catch (error: any) {
+      console.error(`[DocProcessor] 文件解析失败: ${fileName}, error: ${error.message}`)
+      text = ''
     }
 
-    // 如果内容为空，返回默认内容
-    if (!text.trim()) {
-      text = `文件: ${path.basename(filePath)}\n内容为空或无法解析`
+    // 清理文本
+    text = this.cleanText(text)
+
+    // 如果内容为空或太短，返回文件元信息作为内容
+    if (text.length < 10) {
+      console.warn(`[DocProcessor] 文件内容为空或过短: ${fileName} (${text.length} chars)`)
+      text = `文件名: ${fileName}\n文件类型: ${mimeType}\n注意: 此文件内容无法解析，可能是扫描件或加密文件。`
     }
+
+    console.log(`[DocProcessor] 文件 ${fileName}: 解析得到 ${text.length} 个字符`)
 
     // 分块
     return this.splitText(text, {
-      source: path.basename(filePath),
+      source: fileName,
       file_path: filePath,
       mime_type: mimeType
     })
   }
 
   /**
-   * 处理 PDF 文件
+   * 处理 PDF 文件（使用 pdfjs-dist）
    */
   private async processPDF(filePath: string): Promise<string> {
     try {
-      // @ts-ignore - pdf-parse 类型定义问题
-      const pdfParse = (await import('pdf-parse')).default || (await import('pdf-parse'))
-      const buffer = fs.readFileSync(filePath)
-      const data = await pdfParse(buffer)
-      return data.text
-    } catch (error) {
-      console.error('PDF parsing error:', error)
-      // 如果解析失败，尝试使用简单的方式读取文本
-      try {
-        const content = fs.readFileSync(filePath, 'utf-8')
-        // 提取可读文本（ASCII 和中文）
-        const textMatch = content.match(/[\x20-\x7E一-龥]+/g)
-        return textMatch ? textMatch.join('\n') : 'PDF 内容无法解析'
-      } catch {
-        throw new Error('PDF 解析失败')
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      const data = new Uint8Array(fs.readFileSync(filePath))
+      const doc = await pdfjsLib.getDocument({ data }).promise
+
+      let fullText = ''
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i)
+        const content = await page.getTextContent()
+        const text = content.items.map((item: any) => item.str).join(' ')
+        fullText += text + '\n'
       }
+
+      fullText = fullText.trim()
+      if (fullText.length > 10) {
+        console.log(`[DocProcessor] PDF 解析成功: ${doc.numPages} 页, ${fullText.length} 字符`)
+        return fullText
+      }
+
+      console.warn(`[DocProcessor] PDF 解析内容过少: ${fullText.length} 字符`)
+      return ''
+    } catch (error: any) {
+      console.error(`[DocProcessor] PDF 解析错误: ${error.message}`)
+      return ''
     }
   }
 
@@ -93,10 +109,11 @@ export class DocumentProcessor {
       const mammoth = await import('mammoth')
       const buffer = fs.readFileSync(filePath)
       const result = await mammoth.extractRawText({ buffer })
+      console.log(`[DocProcessor] Word 解析成功: ${result.value.length} 字符`)
       return result.value
-    } catch (error) {
-      console.error('Word parsing error:', error)
-      throw new Error('Word 文档解析失败')
+    } catch (error: any) {
+      console.error(`[DocProcessor] Word 解析错误: ${error.message}`)
+      throw error
     }
   }
 
@@ -115,18 +132,32 @@ export class DocumentProcessor {
         text += `=== Sheet: ${sheetName} ===\n${csv}\n\n`
       }
 
+      console.log(`[DocProcessor] Excel 解析成功: ${workbook.SheetNames.length} 个 sheet, ${text.length} 字符`)
       return text
-    } catch (error) {
-      console.error('Excel parsing error:', error)
-      throw new Error('Excel 文件解析失败')
+    } catch (error: any) {
+      console.error(`[DocProcessor] Excel 解析错误: ${error.message}`)
+      throw error
     }
+  }
+
+  /**
+   * 清理文本
+   */
+  private cleanText(text: string): string {
+    return text
+      // 移除控制字符（保留换行和制表符）
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+      // 移除连续空行
+      .replace(/\n{3,}/g, '\n\n')
+      // 移除首尾空白
+      .trim()
   }
 
   /**
    * 处理文本内容
    */
   processText(text: string, metadata: Record<string, any> = {}): ProcessedChunk[] {
-    return this.splitText(text, metadata)
+    return this.splitText(this.cleanText(text), metadata)
   }
 
   /**
@@ -166,19 +197,16 @@ export class DocumentProcessor {
               content: currentChunk.trim(),
               metadata: { ...metadata, chunk_index: chunkIndex++ }
             })
-            // 保留重叠部分
             currentChunk = currentChunk.slice(-this.chunkOverlap) + sentence
           } else {
             currentChunk += (currentChunk ? '。' : '') + sentence
           }
         }
       } else if (currentChunk.length + trimmedParagraph.length > this.chunkSize && currentChunk.length > 0) {
-        // 保存当前 chunk
         chunks.push({
           content: currentChunk.trim(),
           metadata: { ...metadata, chunk_index: chunkIndex++ }
         })
-        // 保留重叠部分
         currentChunk = currentChunk.slice(-this.chunkOverlap) + '\n\n' + trimmedParagraph
       } else {
         currentChunk += (currentChunk ? '\n\n' : '') + trimmedParagraph
@@ -201,6 +229,7 @@ export class DocumentProcessor {
       })
     }
 
+    console.log(`[DocProcessor] 分块完成: ${chunks.length} 个 chunks`)
     return chunks
   }
 
@@ -208,8 +237,7 @@ export class DocumentProcessor {
    * 计算 token 数量（估算）
    */
   estimateTokens(text: string): number {
-    // 中文大约 1.5 字/token，英文大约 4 字符/token
-    const chineseChars = (text.match(/[一-龥]/g) || []).length
+    const chineseChars = (text.match(/[一-鿿]/g) || []).length
     const otherChars = text.length - chineseChars
     return Math.ceil(chineseChars / 1.5 + otherChars / 4)
   }
