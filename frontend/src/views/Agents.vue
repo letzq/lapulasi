@@ -402,12 +402,12 @@ onMounted(async () => {
                 <div v-if="msg.confidence" class="message-confidence">
                   <span class="confidence-label">置信度:</span>
                   <el-progress
-                    :percentage="Math.round(msg.confidence * 100)"
+                    :percentage="Math.round(Number(msg.confidence) * 100)"
                     :stroke-width="6"
                     :show-text="false"
                     class="confidence-bar"
                   />
-                  <span class="confidence-value">{{ Math.round(msg.confidence * 100) }}%</span>
+                  <span class="confidence-value">{{ Math.round(Number(msg.confidence) * 100) }}%</span>
                 </div>
                 <div class="message-actions">
                   <el-button class="action-btn" @click="copyMessage(msg.content)">

@@ -89,7 +89,7 @@ const quickActions = [
             </div>
             <div class="stat-info">
               <div class="stat-value">
-                {{ stat.isPercent ? Math.round((stats[stat.key as keyof OverviewStats] || 0) * 100) + '%' : stats[stat.key as keyof OverviewStats] }}
+                {{ stat.isPercent ? Math.round(Number(stats[stat.key as keyof OverviewStats] || 0) * 100) + '%' : stats[stat.key as keyof OverviewStats] }}
               </div>
               <div class="stat-label">{{ stat.label }}</div>
             </div>

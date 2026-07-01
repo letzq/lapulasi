@@ -80,7 +80,7 @@ onMounted(async () => {
         return `${date.getMonth() + 1}/${date.getDate()}`
       }),
       series: [
-        { name: 'Token 使用量', data: dailyData.map(d => d.tokens) }
+        { name: 'Token 使用量', data: dailyData.map(d => Number(d.tokens)) }
       ]
     }
 
@@ -123,7 +123,7 @@ const statCards = [
             <div class="stat-info">
               <div class="stat-value">
                 {{ stat.isPercent
-                  ? Math.round((overview[stat.key as keyof OverviewStats] || 0) * 100) + '%'
+                  ? Math.round(Number(overview[stat.key as keyof OverviewStats] || 0) * 100) + '%'
                   : (overview[stat.key as keyof OverviewStats] || 0) + (stat.unit || '')
                 }}
               </div>
@@ -186,7 +186,7 @@ const statCards = [
             </div>
           </template>
           <GaugeChart
-            :value="Math.round((overview.averageConfidence || 0) * 100)"
+            :value="Math.round(Number(overview.averageConfidence || 0) * 100)"
             height="250px"
             title="置信度指标"
           />
