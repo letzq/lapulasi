@@ -53,7 +53,10 @@ export interface Source {
   content?: string
   url?: string
   chunkContent?: string
-  relevance: number
+  chunk_content?: string
+  document_name?: string
+  relevance?: number
+  similarity?: number
 }
 
 export interface KnowledgeBase {

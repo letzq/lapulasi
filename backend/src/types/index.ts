@@ -274,6 +274,11 @@ export interface StreamChunkEvent {
   content: string
 }
 
+export interface StreamSourcesEvent {
+  type: 'sources'
+  sources: any[]
+}
+
 export interface StreamDoneEvent {
   type: 'done'
   message: Message
@@ -284,7 +289,7 @@ export interface StreamErrorEvent {
   error: string
 }
 
-export type StreamEvent = StreamChunkEvent | StreamDoneEvent | StreamErrorEvent
+export type StreamEvent = StreamChunkEvent | StreamSourcesEvent | StreamDoneEvent | StreamErrorEvent
 
 /**
  * 创建知识库请求

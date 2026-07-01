@@ -76,15 +76,19 @@ router.get('/', async (req: Request, res: Response) => {
     const size = Number(pageSize)
     const offset = (pageNum - 1) * size
 
-    let sql = 'SELECT id, user_id, name, description, status, document_count, total_tokens, created_at, updated_at FROM knowledge_bases WHERE user_id = ?'
+    let sql = `SELECT kb.id, kb.user_id, kb.name, kb.description, kb.status,
+               COALESCE((SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id), 0) AS document_count,
+               COALESCE((SELECT SUM(d.total_tokens) FROM documents d WHERE d.knowledge_base_id = kb.id), 0) AS total_tokens,
+               kb.created_at, kb.updated_at
+               FROM knowledge_bases kb WHERE kb.user_id = ?`
     const params: any[] = [userId]
 
     if (status) {
-      sql += ' AND status = ?'
+      sql += ' AND kb.status = ?'
       params.push(status)
     }
 
-    sql += ` ORDER BY updated_at DESC LIMIT ${size} OFFSET ${offset}`
+    sql += ` ORDER BY kb.updated_at DESC LIMIT ${size} OFFSET ${offset}`
     const knowledgeBases = await query(sql, params)
 
     let countSql = 'SELECT COUNT(*) as total FROM knowledge_bases WHERE user_id = ?'
@@ -113,7 +117,11 @@ router.get('/:id', async (req: Request, res: Response) => {
     }
 
     const knowledgeBase = await queryOne(
-      'SELECT id, user_id, name, description, status, document_count, total_tokens, config, metadata, created_at, updated_at FROM knowledge_bases WHERE id = ? AND user_id = ?',
+      `SELECT kb.id, kb.user_id, kb.name, kb.description, kb.status,
+       COALESCE((SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id), 0) AS document_count,
+       COALESCE((SELECT SUM(d.total_tokens) FROM documents d WHERE d.knowledge_base_id = kb.id), 0) AS total_tokens,
+       kb.config, kb.metadata, kb.created_at, kb.updated_at
+       FROM knowledge_bases kb WHERE kb.id = ? AND kb.user_id = ?`,
       [req.params.id, userId]
     )
 
@@ -152,7 +160,11 @@ router.post('/', async (req: Request, res: Response) => {
     )
 
     const newKnowledgeBase = await queryOne(
-      'SELECT id, user_id, name, description, status, document_count, total_tokens, created_at, updated_at FROM knowledge_bases WHERE id = ?',
+      `SELECT kb.id, kb.user_id, kb.name, kb.description, kb.status,
+       COALESCE((SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id), 0) AS document_count,
+       COALESCE((SELECT SUM(d.total_tokens) FROM documents d WHERE d.knowledge_base_id = kb.id), 0) AS total_tokens,
+       kb.created_at, kb.updated_at
+       FROM knowledge_bases kb WHERE kb.id = ?`,
       [knowledgeBaseId]
     )
 
@@ -196,7 +208,11 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const updatedKB = await queryOne(
-      'SELECT id, user_id, name, description, status, document_count, total_tokens, created_at, updated_at FROM knowledge_bases WHERE id = ?',
+      `SELECT kb.id, kb.user_id, kb.name, kb.description, kb.status,
+       COALESCE((SELECT COUNT(*) FROM documents d WHERE d.knowledge_base_id = kb.id), 0) AS document_count,
+       COALESCE((SELECT SUM(d.total_tokens) FROM documents d WHERE d.knowledge_base_id = kb.id), 0) AS total_tokens,
+       kb.created_at, kb.updated_at
+       FROM knowledge_bases kb WHERE kb.id = ?`,
       [req.params.id]
     )
 
@@ -329,12 +345,6 @@ router.post('/:id/documents', upload.single('file'), async (req: Request, res: R
       ['active', chunks.length, totalTokens, documentId]
     )
 
-    // 6. 更新知识库统计
-    await execute(
-      'UPDATE knowledge_bases SET document_count = document_count + 1, total_tokens = total_tokens + ? WHERE id = ?',
-      [totalTokens, req.params.id]
-    )
-
     res.status(201).json(successResponse({
       id: documentId,
       name: file.originalname,
@@ -431,11 +441,6 @@ router.post('/:id/documents/upload', upload.single('file'), async (req: Request,
         'UPDATE documents SET status = ?, chunk_count = ?, total_tokens = ? WHERE id = ?',
         ['active', chunks.length, totalTokens, documentId]
       )
-      await execute(
-        'UPDATE knowledge_bases SET document_count = document_count + 1, total_tokens = total_tokens + ? WHERE id = ?',
-        [totalTokens, req.params.id]
-      )
-
       // 完成
       sendProgress('done', 100, `处理完成: ${chunks.length} 个片段`)
       res.write(`data: ${JSON.stringify({ step: 'complete', documentId, chunkCount: chunks.length })}\n\n`)

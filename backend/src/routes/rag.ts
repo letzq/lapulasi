@@ -150,13 +150,7 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
       ['active', chunks.length, chunks.reduce((sum, c) => sum + documentProcessor.estimateTokens(c.content), 0), documentId]
     )
 
-    // 6. 更新知识库文档数量
-    await execute(
-      'UPDATE knowledge_bases SET document_count = document_count + 1 WHERE id = ?',
-      [knowledge_base_id]
-    )
-
-    // 7. 记录统计
+    // 6. 记录统计
     await statsService.recordUsage(userId, { apiCalls: 1 })
 
     res.status(201).json(successResponse({
@@ -352,12 +346,6 @@ router.delete('/documents/:id', async (req: Request, res: Response) => {
 
     // 3. 删除数据库记录（级联删除会删除分块）
     await execute('DELETE FROM documents WHERE id = ?', [document.id])
-
-    // 4. 更新知识库文档数量
-    await execute(
-      'UPDATE knowledge_bases SET document_count = document_count - 1 WHERE id = ?',
-      [document.knowledge_base_id]
-    )
 
     res.json(successResponse(null))
   } catch (error: any) {

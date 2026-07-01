@@ -1,14 +1,15 @@
 /**
  * 嵌入服务
- * 使用 Ollama qwen3-embedding:4b 生成向量
+ * 使用阿里云百炼 Embedding API (OpenAI 兼容格式)
  */
 
 import dotenv from 'dotenv'
 
 dotenv.config()
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434'
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'qwen3-embedding:4b'
+const API_BASE_URL = process.env.EMBEDDING_BASE_URL || 'https://llm-snvwiitgadv6zpj7.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
+const API_KEY = process.env.EMBEDDING_API_KEY || ''
+const MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-v4'
 
 export class EmbeddingService {
   /**
@@ -16,21 +17,25 @@ export class EmbeddingService {
    */
   async getEmbedding(text: string): Promise<number[]> {
     try {
-      const response = await fetch(`${OLLAMA_URL}/api/embed`, {
+      const response = await fetch(`${API_BASE_URL}/embeddings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
         body: JSON.stringify({
-          model: EMBEDDING_MODEL,
+          model: MODEL,
           input: text
         })
       })
 
       if (!response.ok) {
-        throw new Error(`Ollama embedding error: ${response.status}`)
+        const errText = await response.text()
+        throw new Error(`Embedding API error (${response.status}): ${errText}`)
       }
 
       const data = await response.json() as any
-      return data.embeddings[0]
+      return data.data[0].embedding
     } catch (error) {
       console.error('Embedding error:', error)
       throw error
@@ -42,21 +47,25 @@ export class EmbeddingService {
    */
   async getEmbeddings(texts: string[]): Promise<number[][]> {
     try {
-      const response = await fetch(`${OLLAMA_URL}/api/embed`, {
+      const response = await fetch(`${API_BASE_URL}/embeddings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
         body: JSON.stringify({
-          model: EMBEDDING_MODEL,
+          model: MODEL,
           input: texts
         })
       })
 
       if (!response.ok) {
-        throw new Error(`Ollama embedding error: ${response.status}`)
+        const errText = await response.text()
+        throw new Error(`Embedding API error (${response.status}): ${errText}`)
       }
 
       const data = await response.json() as any
-      return data.embeddings
+      return data.data.map((item: any) => item.embedding)
     } catch (error) {
       console.error('Batch embedding error:', error)
       throw error

@@ -14,7 +14,9 @@ import {
   Cpu,
   Timer,
   Coin,
-  Promotion
+  Promotion,
+  ArrowDown,
+  Document
 } from '@element-plus/icons-vue'
 import { getSessions, createSession, deleteSession, type Session } from '@/api/sessions'
 import { getMessages, sendMessage, type Message } from '@/api/messages'
@@ -109,6 +111,17 @@ const handleSend = async () => {
   const content = messageInput.value.trim()
   messageInput.value = ''
 
+  // 自动更新会话标题（首次发消息时）
+  if (currentSession.value.title === '新对话' || !currentSession.value.title) {
+    const autoTitle = content.length > 15 ? content.substring(0, 15) + '...' : content
+    currentSession.value.title = autoTitle
+    // 同步更新侧边栏列表中的标题
+    const sessionInList = sessions.value.find(s => s.id === currentSession.value!.id)
+    if (sessionInList) {
+      sessionInList.title = autoTitle
+    }
+  }
+
   // 添加用户消息到列表
   const userMessage: Message = {
     id: `temp-${Date.now()}`,
@@ -202,6 +215,34 @@ const copyMessage = async (content: string) => {
 // 切换来源显示
 const toggleSources = (msgId: string) => {
   showSources.value[msgId] = !showSources.value[msgId]
+}
+
+// 获取来源相似度百分比
+const getSourceSimilarity = (source: any): number => {
+  const val = source.similarity ?? source.relevance ?? 0
+  return Math.round((val > 1 ? val : val * 100))
+}
+
+// 相似度颜色
+const similarityColor = (pct: number): string => {
+  if (pct >= 80) return '#52c41a'
+  if (pct >= 60) return '#faad14'
+  return '#999'
+}
+
+// 获取来源文档名
+const getSourceTitle = (source: any): string => {
+  return source.documentName || source.document_name || source.title || '未知文档'
+}
+
+// 获取来源知识库名（如果有）
+const getSourceKB = (source: any): string => {
+  return source.knowledgeBaseName || source.knowledge_base_name || ''
+}
+
+// 获取来源内容
+const getSourceContent = (source: any): string => {
+  return source.chunkContent || source.chunk_content || source.content || ''
 }
 
 onMounted(async () => {
@@ -323,17 +364,38 @@ onMounted(async () => {
                 </div>
                 <div class="message-text" v-html="formatContent(msg.content)"></div>
                 <div v-if="msg.sources && msg.sources.length > 0" class="message-sources">
-                  <el-button type="primary" link @click="toggleSources(msg.id)">
+                  <div class="sources-header" @click="toggleSources(msg.id)">
                     <el-icon><FolderOpened /></el-icon>
-                    <span>{{ showSources[msg.id] ? '隐藏' : '查看' }}来源 ({{ msg.sources.length }})</span>
-                  </el-button>
+                    <span class="sources-title">引用来源 ({{ msg.sources.length }})</span>
+                    <el-icon class="sources-arrow" :class="{ expanded: showSources[msg.id] }"><ArrowDown /></el-icon>
+                  </div>
                   <div v-if="showSources[msg.id]" class="sources-list">
                     <div v-for="(source, idx) in msg.sources" :key="idx" class="source-item">
-                      <div class="source-header">
-                        <span class="source-name">{{ source.documentName || source.document_name || '未知文档' }}</span>
-                        <span class="source-relevance">相关度: {{ Math.round((source.relevance || 0) * 100) }}%</span>
+                      <div class="source-top">
+                        <div class="source-index">{{ idx + 1 }}</div>
+                        <div class="source-info">
+                          <div class="source-doc">
+                            <el-icon class="source-doc-icon"><Document /></el-icon>
+                            <span class="source-doc-name">{{ getSourceTitle(source) }}</span>
+                          </div>
+                          <div class="source-score">
+                            <span class="score-label">相似度</span>
+                            <el-progress
+                              :percentage="getSourceSimilarity(source)"
+                              :stroke-width="6"
+                              :show-text="false"
+                              :color="similarityColor(getSourceSimilarity(source))"
+                              class="score-bar"
+                            />
+                            <span class="score-value" :style="{ color: similarityColor(getSourceSimilarity(source)) }">
+                              {{ getSourceSimilarity(source) }}%
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div class="source-content">{{ source.chunkContent || source.chunk_content || '' }}</div>
+                      <div class="source-content" v-if="getSourceContent(source)">
+                        {{ getSourceContent(source) }}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -522,6 +584,10 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--color-text-primary);
   margin-bottom: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 500px;
 }
 
 .header-meta {
@@ -694,49 +760,138 @@ onMounted(async () => {
 /* 来源 */
 .message-sources {
   margin-top: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--bg-primary);
+}
+
+.sources-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.sources-header:hover {
+  background-color: var(--bg-secondary);
+}
+
+.sources-title {
+  flex: 1;
+  font-weight: 500;
+}
+
+.sources-arrow {
+  font-size: 14px;
+  transition: transform var(--transition-fast);
+}
+
+.sources-arrow.expanded {
+  transform: rotate(180deg);
 }
 
 .sources-list {
-  margin-top: 8px;
-  padding: 12px;
-  background-color: var(--bg-tertiary);
-  border-radius: var(--radius-md);
+  padding: 0 14px 14px;
 }
 
 .source-item {
-  padding: 8px 0;
-}
-
-.source-item:not(:last-child) {
+  padding: 12px 0;
   border-bottom: 1px solid var(--border-color-light);
 }
 
-.source-header {
+.source-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.source-top {
   display: flex;
-  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.source-index {
+  width: 22px;
+  height: 22px;
+  background: var(--color-primary);
+  color: white;
+  border-radius: 50%;
+  display: flex;
   align-items: center;
-  margin-bottom: 4px;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
-.source-name {
-  font-size: 13px;
-  font-weight: 500;
+.source-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.source-doc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.source-doc-icon {
+  font-size: 14px;
   color: var(--color-primary);
+  flex-shrink: 0;
 }
 
-.source-relevance {
+.source-doc-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.source-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.score-label {
   font-size: 12px;
   color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.score-bar {
+  flex: 1;
+  max-width: 120px;
+}
+
+.score-value {
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 40px;
 }
 
 .source-content {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--color-text-secondary);
-  line-height: 1.5;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  line-height: 1.6;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 .message-confidence {

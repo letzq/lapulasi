@@ -23,6 +23,33 @@ export class MessageService {
       [sessionId]
     )
 
+    // 批量加载这些消息的来源
+    if (items.length > 0) {
+      const messageIds = items.map(m => m.id)
+      const placeholders = messageIds.map(() => '?').join(',')
+      const sources = await query<MessageSource[]>(
+        `SELECT * FROM message_sources WHERE message_id IN (${placeholders})`,
+        messageIds
+      )
+
+      // 将来源按 message_id 分组
+      const sourcesMap = new Map<string, MessageSource[]>()
+      for (const src of sources) {
+        const list = sourcesMap.get(src.message_id) || []
+        list.push(src)
+        sourcesMap.set(src.message_id, list)
+      }
+
+      // 将来源附加到对应消息
+      for (const msg of items) {
+        const msgSources = sourcesMap.get(msg.id)
+        if (msgSources && msgSources.length > 0) {
+          if (!msg.metadata) msg.metadata = {}
+          msg.metadata.sources = msgSources
+        }
+      }
+    }
+
     const countResult = await queryOne<{ total: number }>(
       'SELECT COUNT(*) as total FROM messages WHERE session_id = ?',
       [sessionId]
